@@ -9,8 +9,8 @@ public class VisualSignatureConfig {
     private SignaturePosition position = SignaturePosition.BOTTOM_RIGHT;
     private Integer x;
     private Integer y;
-    private int width = 200;
-    private int height = 80;
+    private int width = 240;
+    private int height = 102;
 
     public VisualSignatureConfig() {
     }
@@ -92,8 +92,8 @@ public class VisualSignatureConfig {
         private SignaturePosition position = SignaturePosition.BOTTOM_RIGHT;
         private Integer x;
         private Integer y;
-        private int width = 200;
-        private int height = 80;
+        private int width = 240;
+        private int height = 102;
 
         public Builder enabled(boolean enabled) {
             this.enabled = enabled;

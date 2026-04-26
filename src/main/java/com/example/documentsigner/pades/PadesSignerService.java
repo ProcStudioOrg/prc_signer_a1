@@ -18,9 +18,14 @@ import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.apache.pdfbox.pdmodel.PDResources;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
+import org.apache.pdfbox.pdmodel.graphics.image.LosslessFactory;
+import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
+import org.apache.pdfbox.pdmodel.interactive.action.PDActionURI;
+import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotationLink;
 import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotationWidget;
 import org.apache.pdfbox.pdmodel.interactive.annotation.PDAppearanceDictionary;
 import org.apache.pdfbox.pdmodel.interactive.annotation.PDAppearanceStream;
+import org.apache.pdfbox.pdmodel.interactive.annotation.PDBorderStyleDictionary;
 import org.apache.pdfbox.pdmodel.PDAppearanceContentStream;
 import org.apache.pdfbox.pdmodel.interactive.digitalsignature.PDSignature;
 import org.apache.pdfbox.pdmodel.interactive.digitalsignature.SignatureOptions;
@@ -37,9 +42,12 @@ import org.bouncycastle.cms.jcajce.JcaSimpleSignerInfoVerifierBuilder;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.bouncycastle.util.Store;
 
+import javax.imageio.ImageIO;
+import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.security.KeyStore;
 import java.security.PrivateKey;
 import java.security.Security;
@@ -50,6 +58,7 @@ import java.util.Calendar;
 import java.util.Collection;
 import java.util.Date;
 import java.util.List;
+import java.util.TimeZone;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -71,6 +80,10 @@ public class PadesSignerService {
 
     // Preferred signature container size (32KB should be enough for most signatures with chain)
     private static final int PREFERRED_SIGNATURE_SIZE = 32768;
+
+    // ProcStudio brand
+    private static final String PROCSTUDIO_URL = "https://procstudio.com.br";
+    private static final TimeZone DISPLAY_TIMEZONE = TimeZone.getTimeZone("America/Sao_Paulo");
 
     static {
         if (Security.getProvider("BC") == null) {
@@ -208,8 +221,13 @@ public class PadesSignerService {
 
                 // Create the visual signature template
                 byte[] visualTemplate = createVisualSignatureTemplate(
-                    document, pageIndex, signatureRect, signerInfo);
+                    document, pageIndex, signatureRect, signerInfo, metadata);
                 signatureOptions.setVisualSignature(new ByteArrayInputStream(visualTemplate));
+
+                // Add a clickable link annotation over the ProcStudio logo+wordmark.
+                // Must be added to the actual document page BEFORE addSignature, so the
+                // incremental save covers it within the signed byte range.
+                addBrandLinkAnnotation(page, signatureRect);
 
                 // Add signature to document
                 document.addSignature(signature, signatureInterface, signatureOptions);
@@ -268,118 +286,53 @@ public class PadesSignerService {
 
     private byte[] createVisualSignatureTemplate(PDDocument srcDoc, int pageIndex,
                                                   PDRectangle signatureRect,
-                                                  SignerDisplayInfo signerInfo) throws IOException {
+                                                  SignerDisplayInfo signerInfo,
+                                                  SignatureMetadata metadata) throws IOException {
         // Create a new document for the template
         PDDocument template = new PDDocument();
 
         try {
             // BUG FIX: Create empty pages up to and including the target page index.
-            // This ensures the signature widget is placed on the correct page when
-            // PDFBox merges the template with the original document.
-            // Previously, only one page was imported, causing signatures to always
-            // appear on page 1 regardless of the selected page.
             for (int i = 0; i <= pageIndex; i++) {
                 PDPage srcPage = srcDoc.getPage(i);
                 PDPage newPage = new PDPage(srcPage.getMediaBox());
                 template.addPage(newPage);
             }
 
-            // Get the target page at the correct index
             PDPage templatePage = template.getPage(pageIndex);
 
-            // Create AcroForm
             PDAcroForm acroForm = new PDAcroForm(template);
             template.getDocumentCatalog().setAcroForm(acroForm);
             acroForm.setSignaturesExist(true);
             acroForm.setAppendOnly(true);
             acroForm.getCOSObject().setDirect(true);
 
-            // Create signature field
             PDSignatureField signatureField = new PDSignatureField(acroForm);
             signatureField.setPartialName("Signature1");
 
-            // Get widget and set rectangle
             PDAnnotationWidget widget = signatureField.getWidgets().get(0);
             widget.setRectangle(signatureRect);
             widget.setPage(templatePage);
 
-            // Create appearance stream
             PDAppearanceStream appearanceStream = new PDAppearanceStream(template);
-            appearanceStream.setResources(new PDResources());
+            PDResources appearanceResources = new PDResources();
+            appearanceStream.setResources(appearanceResources);
             appearanceStream.setBBox(new PDRectangle(signatureRect.getWidth(), signatureRect.getHeight()));
 
             float w = signatureRect.getWidth();
             float h = signatureRect.getHeight();
 
-            // Draw the signature content using PDAppearanceContentStream
-            PDAppearanceContentStream cs = new PDAppearanceContentStream(appearanceStream);
+            drawSignatureAppearance(appearanceStream, appearanceResources, template,
+                                    w, h, signerInfo, metadata);
 
-            // Draw border
-            cs.setStrokingColor(0, 0, 0);
-            cs.setLineWidth(0.5f);
-            cs.addRect(1, 1, w - 2, h - 2);
-            cs.stroke();
-
-            // Draw title
-            cs.beginText();
-            cs.setFont(PDType1Font.HELVETICA_BOLD, 9);
-            cs.newLineAtOffset(5, h - 14);
-            cs.showText("ASSINADO DIGITALMENTE");
-            cs.endText();
-
-            // Draw separator line
-            cs.moveTo(5, h - 18);
-            cs.lineTo(w - 5, h - 18);
-            cs.stroke();
-
-            // Draw content
-            cs.beginText();
-            cs.setFont(PDType1Font.HELVETICA, 7);
-            cs.setLeading(10);
-            cs.newLineAtOffset(5, h - 30);
-
-            // Name
-            String name = signerInfo.getName() != null ? signerInfo.getName() : "N/A";
-            if (name.length() > 35) {
-                name = name.substring(0, 32) + "...";
-            }
-            cs.showText("Nome: " + name);
-            cs.newLine();
-
-            // CPF (masked)
-            String cpf = signerInfo.getMaskedCpf();
-            if (cpf != null) {
-                cs.showText("CPF: " + cpf);
-                cs.newLine();
-            }
-
-            // Issuer CA
-            String issuer = signerInfo.getIssuerCA() != null ? signerInfo.getIssuerCA() : "N/A";
-            if (issuer.length() > 35) {
-                issuer = issuer.substring(0, 32) + "...";
-            }
-            cs.showText("AC: " + issuer);
-            cs.newLine();
-
-            // Date/Time
-            SimpleDateFormat sdf = new SimpleDateFormat("dd/MM/yyyy HH:mm:ss");
-            String dateStr = sdf.format(signerInfo.getSigningTime());
-            cs.showText("Data: " + dateStr);
-
-            cs.endText();
-            cs.close();
-
-            // Set appearance
             PDAppearanceDictionary appearance = new PDAppearanceDictionary();
             appearance.getCOSObject().setDirect(true);
             appearance.setNormalAppearance(appearanceStream);
             widget.setAppearance(appearance);
 
-            // Add field to form and annotations to page
             acroForm.getFields().add(signatureField);
             templatePage.getAnnotations().add(widget);
 
-            // Save template to bytes
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
             template.save(baos);
             return baos.toByteArray();
@@ -387,6 +340,211 @@ public class PadesSignerService {
         } finally {
             template.close();
         }
+    }
+
+    /**
+     * Draws the visual signature appearance — refined document-grade layout.
+     *
+     *   ┌───────────────────────────────────────────────┐
+     *   │  ASSINADO DIGITALMENTE                        │
+     *   │  ──                                           │
+     *   │  NOME      BRUNO PELLIZZETTI                  │
+     *   │  CPF       ***.123.456-**                     │
+     *   │  AC        AC SOLUTI v5                       │
+     *   │  DATA      25/04/2026 20:07:33                │
+     *   │                                               │
+     *   │  [logo]  ProcStudio   ← clickable link        │
+     *   └───────────────────────────────────────────────┘
+     */
+    private void drawSignatureAppearance(PDAppearanceStream appearanceStream,
+                                         PDResources resources,
+                                         PDDocument template,
+                                         float w, float h,
+                                         SignerDisplayInfo signerInfo,
+                                         SignatureMetadata metadata) throws IOException {
+
+        // Palette
+        final float[] textPrimary  = {0.15f, 0.18f, 0.22f};   // near-black slate
+        final float[] textLabel    = {0.50f, 0.53f, 0.58f};   // medium gray
+        final float[] accent       = {0.05f, 0.25f, 0.55f};   // ProcStudio navy
+        final float[] hairline     = {0.85f, 0.86f, 0.90f};   // barely-there border
+
+        // Layout
+        final float pad = 10f;
+        final float titleY = h - pad - 3f;
+        final float separatorY = titleY - 6f;
+        float rowY = separatorY - 13f;
+        final float rowGap = 11f;
+        final float textCol = pad;
+        final float labelWidth = 46f;
+        final float valueX = textCol + labelWidth;
+        final float textRight = w - pad;
+
+        PDAppearanceContentStream cs = new PDAppearanceContentStream(appearanceStream);
+        try {
+            // ─── Hairline border ───
+            cs.setStrokingColor(hairline[0], hairline[1], hairline[2]);
+            cs.setLineWidth(0.5f);
+            cs.addRect(0.5f, 0.5f, w - 1f, h - 1f);
+            cs.stroke();
+
+            // ─── Title ───
+            cs.setNonStrokingColor(accent[0], accent[1], accent[2]);
+            cs.beginText();
+            cs.setFont(PDType1Font.HELVETICA_BOLD, 8.5f);
+            cs.setCharacterSpacing(0.7f);
+            cs.newLineAtOffset(textCol, titleY);
+            cs.showText("ASSINADO DIGITALMENTE");
+            cs.endText();
+            cs.setCharacterSpacing(0f);
+
+            // ─── Accent separator ───
+            cs.setStrokingColor(accent[0], accent[1], accent[2]);
+            cs.setLineWidth(0.8f);
+            cs.moveTo(textCol, separatorY);
+            cs.lineTo(textCol + 26f, separatorY);
+            cs.stroke();
+
+            // ─── Field rows ───
+            drawRow(cs, "Nome", truncate(signerInfo.getName(), 38),
+                    textCol, valueX, rowY, textLabel, textPrimary);
+            rowY -= rowGap;
+
+            String cpf = signerInfo.getMaskedCpf();
+            if (cpf != null) {
+                drawRow(cs, "CPF", cpf, textCol, valueX, rowY, textLabel, textPrimary);
+                rowY -= rowGap;
+            }
+
+            drawRow(cs, "AC", truncate(signerInfo.getIssuerCA(), 42),
+                    textCol, valueX, rowY, textLabel, textPrimary);
+            rowY -= rowGap;
+
+            SimpleDateFormat sdf = new SimpleDateFormat("dd/MM/yyyy HH:mm:ss");
+            sdf.setTimeZone(DISPLAY_TIMEZONE);
+            drawRow(cs, "Data", sdf.format(signerInfo.getSigningTime()),
+                    textCol, valueX, rowY, textLabel, textPrimary);
+
+            // ─── ProcStudio brand strip (logo + colored wordmark) ───
+            drawBrandStrip(cs, template, pad, 8f);
+
+        } finally {
+            cs.close();
+        }
+    }
+
+    /**
+     * Draws the ProcStudio symbol followed by "Proc" (#01003C) and "Studio" (#2178F2)
+     * as a single inline wordmark.
+     */
+    private void drawBrandStrip(PDAppearanceContentStream cs, PDDocument template,
+                                 float x, float y) throws IOException {
+        final float logoSize = 18f;
+        final float wordmarkSize = 12f;
+        final float gap = 4f;
+
+        drawLogo(cs, template, x, y, logoSize, logoSize);
+
+        // "Proc" — deep navy #01003C
+        float textBaseline = y + (logoSize - wordmarkSize) / 2f + 3f;
+        float cursorX = x + logoSize + gap;
+
+        cs.setNonStrokingColor(0.004f, 0.000f, 0.235f);
+        cs.beginText();
+        cs.setFont(PDType1Font.HELVETICA_BOLD, wordmarkSize);
+        cs.newLineAtOffset(cursorX, textBaseline);
+        cs.showText("Proc");
+        cs.endText();
+
+        float procWidth = PDType1Font.HELVETICA_BOLD.getStringWidth("Proc") / 1000f * wordmarkSize;
+        cursorX += procWidth;
+
+        // "Studio" — bright blue #2178F2
+        cs.setNonStrokingColor(0.129f, 0.471f, 0.949f);
+        cs.beginText();
+        cs.setFont(PDType1Font.HELVETICA_BOLD, wordmarkSize);
+        cs.newLineAtOffset(cursorX, textBaseline);
+        cs.showText("Studio");
+        cs.endText();
+    }
+
+    /**
+     * Adds a transparent clickable link annotation over the brand area
+     * (logo + "ProcStudio" wordmark) on the actual signed page.
+     */
+    private void addBrandLinkAnnotation(PDPage page, PDRectangle signatureRect) throws IOException {
+        // Brand strip drawn at relative (pad=10, y=8): logo 18x18 + gap 4 + "ProcStudio" ~48pt
+        final float relX = 10f;
+        final float relY = 8f;
+        final float linkW = 18f + 4f + 50f;
+        final float linkH = 18f;
+
+        PDAnnotationLink link = new PDAnnotationLink();
+        PDRectangle linkRect = new PDRectangle(
+            signatureRect.getLowerLeftX() + relX,
+            signatureRect.getLowerLeftY() + relY,
+            linkW,
+            linkH
+        );
+        link.setRectangle(linkRect);
+
+        PDActionURI action = new PDActionURI();
+        action.setURI(PROCSTUDIO_URL);
+        link.setAction(action);
+
+        // Invisible border
+        PDBorderStyleDictionary border = new PDBorderStyleDictionary();
+        border.setStyle(PDBorderStyleDictionary.STYLE_SOLID);
+        border.setWidth(0);
+        link.setBorderStyle(border);
+
+        page.getAnnotations().add(link);
+    }
+
+    private void drawRow(PDAppearanceContentStream cs, String label, String value,
+                         float labelX, float valueX, float y,
+                         float[] labelColor, float[] valueColor) throws IOException {
+        cs.setNonStrokingColor(labelColor[0], labelColor[1], labelColor[2]);
+        cs.beginText();
+        cs.setFont(PDType1Font.HELVETICA, 6f);
+        cs.newLineAtOffset(labelX, y);
+        cs.showText(label.toUpperCase());
+        cs.endText();
+
+        cs.setNonStrokingColor(valueColor[0], valueColor[1], valueColor[2]);
+        cs.beginText();
+        cs.setFont(PDType1Font.HELVETICA, 7f);
+        cs.newLineAtOffset(valueX, y);
+        cs.showText(value != null ? value : "—");
+        cs.endText();
+    }
+
+    private void drawLogo(PDAppearanceContentStream cs, PDDocument template,
+                          float x, float y, float w, float h) throws IOException {
+        InputStream logoStream = getClass().getResourceAsStream("/procstudio_logo.png");
+        if (logoStream == null) return;
+        try {
+            BufferedImage img = ImageIO.read(logoStream);
+            if (img == null) return;
+            // Preserve aspect ratio — logo is roughly square but be safe
+            float ratio = (float) img.getWidth() / (float) img.getHeight();
+            float drawW = w;
+            float drawH = h;
+            if (ratio > 1) drawH = w / ratio;
+            else           drawW = h * ratio;
+            float dx = x + (w - drawW) / 2f;
+            float dy = y + (h - drawH) / 2f;
+            PDImageXObject logo = LosslessFactory.createFromImage(template, img);
+            cs.drawImage(logo, dx, dy, drawW, drawH);
+        } finally {
+            logoStream.close();
+        }
+    }
+
+    private String truncate(String value, int maxChars) {
+        if (value == null) return null;
+        if (value.length() <= maxChars) return value;
+        return value.substring(0, Math.max(0, maxChars - 1)) + "…";
     }
 
     /**
@@ -483,6 +641,7 @@ public class PadesSignerService {
     public SignerDisplayInfo extractSignerInfo(X509Certificate cert) {
         SignerDisplayInfo info = new SignerDisplayInfo();
         info.setSigningTime(new Date());
+        info.setValidUntil(cert.getNotAfter());
 
         // Extract CN (name)
         info.setName(extractCN(cert));

@@ -11,6 +11,7 @@ public class SignerDisplayInfo {
     private String organization;
     private String issuerCA;
     private Date signingTime;
+    private Date validUntil;
 
     public SignerDisplayInfo() {
     }
@@ -21,6 +22,14 @@ public class SignerDisplayInfo {
         this.organization = organization;
         this.issuerCA = issuerCA;
         this.signingTime = signingTime;
+    }
+
+    public Date getValidUntil() {
+        return validUntil;
+    }
+
+    public void setValidUntil(Date validUntil) {
+        this.validUntil = validUntil;
     }
 
     public String getName() {
@@ -64,7 +73,8 @@ public class SignerDisplayInfo {
     }
 
     /**
-     * Get formatted CPF with masking for privacy: ***.***. ***-XX
+     * Get formatted CPF with privacy mask: ***.123.456-**
+     * Shows the middle 6 digits, masking the first 3 and the last 2 (verification digits).
      */
     public String getMaskedCpf() {
         if (cpf == null || cpf.length() < 11) {
@@ -72,7 +82,7 @@ public class SignerDisplayInfo {
         }
         String digits = cpf.replaceAll("[^0-9]", "");
         if (digits.length() >= 11) {
-            return "***.***.***-" + digits.substring(9, 11);
+            return "***." + digits.substring(3, 6) + "." + digits.substring(6, 9) + "-**";
         }
         return cpf;
     }

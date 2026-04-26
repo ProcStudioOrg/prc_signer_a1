@@ -329,8 +329,8 @@ public class SignerController {
             @RequestParam(value = "position", defaultValue = "bottom-right") String position,
             @RequestParam(value = "x", required = false) Integer x,
             @RequestParam(value = "y", required = false) Integer y,
-            @RequestParam(value = "width", defaultValue = "200") int width,
-            @RequestParam(value = "height", defaultValue = "80") int height) {
+            @RequestParam(value = "width", defaultValue = "240") int width,
+            @RequestParam(value = "height", defaultValue = "102") int height) {
 
         try {
             byte[] pdfBytes = document.getBytes();
@@ -395,8 +395,8 @@ public class SignerController {
             @RequestParam(value = "position", defaultValue = "bottom-right") String position,
             @RequestParam(value = "x", required = false) Integer x,
             @RequestParam(value = "y", required = false) Integer y,
-            @RequestParam(value = "width", defaultValue = "200") int width,
-            @RequestParam(value = "height", defaultValue = "80") int height) {
+            @RequestParam(value = "width", defaultValue = "240") int width,
+            @RequestParam(value = "height", defaultValue = "102") int height) {
 
         try {
             byte[] pdfBytes = document.getBytes();
@@ -469,8 +469,8 @@ public class SignerController {
             @RequestParam(value = "visible", defaultValue = "false") boolean visible,
             @RequestParam(value = "page", defaultValue = "1") int page,
             @RequestParam(value = "position", defaultValue = "bottom-right") String position,
-            @RequestParam(value = "width", defaultValue = "200") int width,
-            @RequestParam(value = "height", defaultValue = "80") int height) {
+            @RequestParam(value = "width", defaultValue = "240") int width,
+            @RequestParam(value = "height", defaultValue = "102") int height) {
 
         try {
             byte[] certBytes = certificate.getBytes();
