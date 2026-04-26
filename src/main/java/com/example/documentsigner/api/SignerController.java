@@ -9,6 +9,7 @@ import com.example.documentsigner.api.dto.VerifyResponse;
 import com.example.documentsigner.pades.dto.PdfVerificationResult;
 import com.example.documentsigner.pades.dto.SignatureMetadata;
 import com.example.documentsigner.pades.dto.SignaturePosition;
+import com.example.documentsigner.pades.dto.TimestampConfig;
 import com.example.documentsigner.pades.dto.VisualSignatureConfig;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -330,7 +331,9 @@ public class SignerController {
             @RequestParam(value = "x", required = false) Integer x,
             @RequestParam(value = "y", required = false) Integer y,
             @RequestParam(value = "width", defaultValue = "240") int width,
-            @RequestParam(value = "height", defaultValue = "102") int height) {
+            @RequestParam(value = "height", defaultValue = "102") int height,
+            @RequestParam(value = "timestamp", defaultValue = "false") boolean timestamp,
+            @RequestParam(value = "tsaUrl", required = false) String tsaUrl) {
 
         try {
             byte[] pdfBytes = document.getBytes();
@@ -342,6 +345,9 @@ public class SignerController {
                 .location(location)
                 .contactInfo(contact)
                 .build();
+
+            // Optional TSA config — opt-in via timestamp=true
+            TimestampConfig tsConfig = timestamp ? new TimestampConfig(tsaUrl) : null;
 
             byte[] signedPdf;
 
@@ -358,9 +364,10 @@ public class SignerController {
                     .build();
 
                 signedPdf = signingService.signDocumentPadesVisible(
-                    pdfBytes, certBytes, password, metadata, visualConfig);
+                    pdfBytes, certBytes, password, metadata, visualConfig, tsConfig);
             } else {
-                signedPdf = signingService.signDocumentPades(pdfBytes, certBytes, password, metadata);
+                signedPdf = signingService.signDocumentPades(
+                    pdfBytes, certBytes, password, metadata, tsConfig);
             }
 
             String originalFilename = document.getOriginalFilename();
@@ -396,7 +403,9 @@ public class SignerController {
             @RequestParam(value = "x", required = false) Integer x,
             @RequestParam(value = "y", required = false) Integer y,
             @RequestParam(value = "width", defaultValue = "240") int width,
-            @RequestParam(value = "height", defaultValue = "102") int height) {
+            @RequestParam(value = "height", defaultValue = "102") int height,
+            @RequestParam(value = "timestamp", defaultValue = "false") boolean timestamp,
+            @RequestParam(value = "tsaUrl", required = false) String tsaUrl) {
 
         try {
             byte[] pdfBytes = document.getBytes();
@@ -408,6 +417,8 @@ public class SignerController {
                 .location(location)
                 .contactInfo(contact)
                 .build();
+
+            TimestampConfig tsConfig = timestamp ? new TimestampConfig(tsaUrl) : null;
 
             byte[] signedPdf;
 
@@ -423,9 +434,10 @@ public class SignerController {
                     .build();
 
                 signedPdf = signingService.signDocumentPadesVisible(
-                    pdfBytes, certBytes, password, metadata, visualConfig);
+                    pdfBytes, certBytes, password, metadata, visualConfig, tsConfig);
             } else {
-                signedPdf = signingService.signDocumentPades(pdfBytes, certBytes, password, metadata);
+                signedPdf = signingService.signDocumentPades(
+                    pdfBytes, certBytes, password, metadata, tsConfig);
             }
 
             String originalFilename = document.getOriginalFilename();

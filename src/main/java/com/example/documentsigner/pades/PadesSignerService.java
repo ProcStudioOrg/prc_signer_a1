@@ -9,6 +9,7 @@ import com.example.documentsigner.pades.dto.PdfVerificationResult;
 import com.example.documentsigner.pades.dto.SignatureMetadata;
 import com.example.documentsigner.pades.dto.SignaturePosition;
 import com.example.documentsigner.pades.dto.SignerDisplayInfo;
+import com.example.documentsigner.pades.dto.TimestampConfig;
 import com.example.documentsigner.pades.dto.VisualSignatureConfig;
 
 import org.apache.pdfbox.cos.COSName;
@@ -78,8 +79,11 @@ import java.util.regex.Pattern;
  */
 public class PadesSignerService {
 
-    // Preferred signature container size (32KB should be enough for most signatures with chain)
-    private static final int PREFERRED_SIGNATURE_SIZE = 32768;
+    // Preferred signature container size.
+    // 32KB fits most PAdES-B sigs with chain. PAdES-T adds ~6-12KB for the TSA token,
+    // so we double the placeholder when a timestamp is requested.
+    private static final int PREFERRED_SIGNATURE_SIZE          = 32768;
+    private static final int PREFERRED_SIGNATURE_SIZE_WITH_TST = 65536;
 
     // ProcStudio brand
     private static final String PROCSTUDIO_URL = "https://procstudio.com.br";
@@ -103,6 +107,15 @@ public class PadesSignerService {
      */
     public byte[] signPdf(byte[] pdfBytes, byte[] certBytes, String password,
                           SignatureMetadata metadata) throws SigningException {
+        return signPdf(pdfBytes, certBytes, password, metadata, null);
+    }
+
+    /**
+     * Sign PDF with invisible signature (PAdES-B or PAdES-T if {@code timestampConfig} is non-null).
+     */
+    public byte[] signPdf(byte[] pdfBytes, byte[] certBytes, String password,
+                          SignatureMetadata metadata,
+                          TimestampConfig timestampConfig) throws SigningException {
         validateInputs(pdfBytes, certBytes, password);
 
         try {
@@ -123,13 +136,17 @@ public class PadesSignerService {
                 // Create signature dictionary
                 PDSignature signature = createSignature(signingCert, metadata);
 
-                // Create signature interface
+                // Create signature interface (with optional TSA service)
+                TimestampService tsaService = (timestampConfig != null)
+                    ? new TimestampService(timestampConfig.getTsaUrl())
+                    : null;
                 PadesSignatureInterface signatureInterface =
-                    new PadesSignatureInterface(privateKey, certificateChain);
+                    new PadesSignatureInterface(privateKey, certificateChain, tsaService);
 
-                // Configure signature options
+                // Configure signature options — bump placeholder when timestamping
                 SignatureOptions signatureOptions = new SignatureOptions();
-                signatureOptions.setPreferredSignatureSize(PREFERRED_SIGNATURE_SIZE);
+                signatureOptions.setPreferredSignatureSize(
+                    tsaService != null ? PREFERRED_SIGNATURE_SIZE_WITH_TST : PREFERRED_SIGNATURE_SIZE);
 
                 // Add signature to document
                 document.addSignature(signature, signatureInterface, signatureOptions);
@@ -166,9 +183,19 @@ public class PadesSignerService {
     public byte[] signPdfVisible(byte[] pdfBytes, byte[] certBytes, String password,
                                   SignatureMetadata metadata, VisualSignatureConfig visualConfig)
             throws SigningException {
+        return signPdfVisible(pdfBytes, certBytes, password, metadata, visualConfig, null);
+    }
+
+    /**
+     * Sign PDF with visible signature (PAdES-B or PAdES-T if {@code timestampConfig} is non-null).
+     */
+    public byte[] signPdfVisible(byte[] pdfBytes, byte[] certBytes, String password,
+                                  SignatureMetadata metadata, VisualSignatureConfig visualConfig,
+                                  TimestampConfig timestampConfig)
+            throws SigningException {
 
         if (visualConfig == null || !visualConfig.isEnabled()) {
-            return signPdf(pdfBytes, certBytes, password, metadata);
+            return signPdf(pdfBytes, certBytes, password, metadata, timestampConfig);
         }
 
         validateInputs(pdfBytes, certBytes, password);
@@ -202,9 +229,12 @@ public class PadesSignerService {
                 // Create signature dictionary
                 PDSignature signature = createSignature(signingCert, metadata);
 
-                // Create signature interface
+                // Create signature interface (with optional TSA service)
+                TimestampService tsaService = (timestampConfig != null)
+                    ? new TimestampService(timestampConfig.getTsaUrl())
+                    : null;
                 PadesSignatureInterface signatureInterface =
-                    new PadesSignatureInterface(privateKey, certificateChain);
+                    new PadesSignatureInterface(privateKey, certificateChain, tsaService);
 
                 // Calculate signature rectangle position
                 PDPage page = document.getPage(pageIndex);
@@ -216,7 +246,8 @@ public class PadesSignerService {
 
                 // Create signature options with proper rectangle
                 SignatureOptions signatureOptions = new SignatureOptions();
-                signatureOptions.setPreferredSignatureSize(PREFERRED_SIGNATURE_SIZE);
+                signatureOptions.setPreferredSignatureSize(
+                    tsaService != null ? PREFERRED_SIGNATURE_SIZE_WITH_TST : PREFERRED_SIGNATURE_SIZE);
                 signatureOptions.setPage(pageIndex);
 
                 // Create the visual signature template
