@@ -9,6 +9,13 @@
 # Test certificates directory (A1 signer)
 test/
 
+# Local test secrets — NEVER commit. These are developer-local files
+# (real A1 cert + its plaintext password) used by tests/test_pades_api.sh.
+tests/PASS.md
+tests/BP.pfx
+tests/*.pfx
+tests/*.p12
+
 *.aider*
 
 

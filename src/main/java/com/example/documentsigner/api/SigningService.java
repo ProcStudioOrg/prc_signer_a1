@@ -7,6 +7,7 @@ import com.example.documentsigner.PdfSigner;
 import com.example.documentsigner.api.dto.CertificateInfo;
 import com.example.documentsigner.pades.dto.PdfVerificationResult;
 import com.example.documentsigner.pades.dto.SignatureMetadata;
+import com.example.documentsigner.pades.dto.TimestampConfig;
 import com.example.documentsigner.pades.dto.VisualSignatureConfig;
 import org.springframework.stereotype.Service;
 
@@ -178,6 +179,16 @@ public class SigningService {
     }
 
     /**
+     * Sign PDF with PAdES + optional TSA timestamp.
+     * If {@code timestampConfig} is non-null and TSA reachable, output is PAdES-T.
+     * If TSA fails, falls back to PAdES-B with a warning logged.
+     */
+    public byte[] signDocumentPades(byte[] pdfBytes, byte[] certBytes, String password,
+                                     SignatureMetadata metadata, TimestampConfig timestampConfig) {
+        return pdfSigner.signPdfPades(pdfBytes, certBytes, password, metadata, timestampConfig);
+    }
+
+    /**
      * Sign a PDF document with PAdES format and visible signature.
      *
      * @param pdfBytes The PDF document bytes
@@ -190,6 +201,16 @@ public class SigningService {
     public byte[] signDocumentPadesVisible(byte[] pdfBytes, byte[] certBytes, String password,
                                             SignatureMetadata metadata, VisualSignatureConfig visualConfig) {
         return pdfSigner.signPdfPadesVisible(pdfBytes, certBytes, password, metadata, visualConfig);
+    }
+
+    /**
+     * Sign PDF with PAdES, visible signature, and optional TSA timestamp.
+     */
+    public byte[] signDocumentPadesVisible(byte[] pdfBytes, byte[] certBytes, String password,
+                                            SignatureMetadata metadata, VisualSignatureConfig visualConfig,
+                                            TimestampConfig timestampConfig) {
+        return pdfSigner.signPdfPadesVisible(
+            pdfBytes, certBytes, password, metadata, visualConfig, timestampConfig);
     }
 
     /**

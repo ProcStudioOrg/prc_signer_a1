@@ -8,6 +8,7 @@ import com.example.documentsigner.exception.SigningException;
 import com.example.documentsigner.pades.PadesSignerService;
 import com.example.documentsigner.pades.dto.PdfVerificationResult;
 import com.example.documentsigner.pades.dto.SignatureMetadata;
+import com.example.documentsigner.pades.dto.TimestampConfig;
 import com.example.documentsigner.pades.dto.VisualSignatureConfig;
 import org.apache.pdfbox.pdmodel.PDDocument;
 
@@ -179,6 +180,14 @@ public class PdfSigner {
     }
 
     /**
+     * Sign PDF using PAdES format with optional TSA timestamp (PAdES-T when {@code timestampConfig} is non-null).
+     */
+    public byte[] signPdfPades(byte[] pdfBytes, byte[] certBytes, String password,
+                                SignatureMetadata metadata, TimestampConfig timestampConfig) {
+        return padesSignerService.signPdf(pdfBytes, certBytes, password, metadata, timestampConfig);
+    }
+
+    /**
      * Sign PDF using PAdES format with visible signature.
      *
      * @param pdfBytes The PDF document bytes
@@ -192,6 +201,16 @@ public class PdfSigner {
     public byte[] signPdfPadesVisible(byte[] pdfBytes, byte[] certBytes, String password,
                                        SignatureMetadata metadata, VisualSignatureConfig visualConfig) {
         return padesSignerService.signPdfVisible(pdfBytes, certBytes, password, metadata, visualConfig);
+    }
+
+    /**
+     * Sign PDF using PAdES with visible signature and optional TSA timestamp.
+     */
+    public byte[] signPdfPadesVisible(byte[] pdfBytes, byte[] certBytes, String password,
+                                       SignatureMetadata metadata, VisualSignatureConfig visualConfig,
+                                       TimestampConfig timestampConfig) {
+        return padesSignerService.signPdfVisible(
+            pdfBytes, certBytes, password, metadata, visualConfig, timestampConfig);
     }
 
     /**

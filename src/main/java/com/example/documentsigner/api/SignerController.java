@@ -9,6 +9,7 @@ import com.example.documentsigner.api.dto.VerifyResponse;
 import com.example.documentsigner.pades.dto.PdfVerificationResult;
 import com.example.documentsigner.pades.dto.SignatureMetadata;
 import com.example.documentsigner.pades.dto.SignaturePosition;
+import com.example.documentsigner.pades.dto.TimestampConfig;
 import com.example.documentsigner.pades.dto.VisualSignatureConfig;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -330,7 +331,9 @@ public class SignerController {
             @RequestParam(value = "x", required = false) Integer x,
             @RequestParam(value = "y", required = false) Integer y,
             @RequestParam(value = "width", defaultValue = "240") int width,
-            @RequestParam(value = "height", defaultValue = "102") int height) {
+            @RequestParam(value = "height", defaultValue = "102") int height,
+            @RequestParam(value = "timestamp", defaultValue = "false") boolean timestamp,
+            @RequestParam(value = "tsaUrl", required = false) String tsaUrl) {
 
         try {
             byte[] pdfBytes = document.getBytes();
@@ -342,6 +345,9 @@ public class SignerController {
                 .location(location)
                 .contactInfo(contact)
                 .build();
+
+            // Optional TSA config — opt-in via timestamp=true
+            TimestampConfig tsConfig = timestamp ? new TimestampConfig(tsaUrl) : null;
 
             byte[] signedPdf;
 
@@ -358,9 +364,10 @@ public class SignerController {
                     .build();
 
                 signedPdf = signingService.signDocumentPadesVisible(
-                    pdfBytes, certBytes, password, metadata, visualConfig);
+                    pdfBytes, certBytes, password, metadata, visualConfig, tsConfig);
             } else {
-                signedPdf = signingService.signDocumentPades(pdfBytes, certBytes, password, metadata);
+                signedPdf = signingService.signDocumentPades(
+                    pdfBytes, certBytes, password, metadata, tsConfig);
             }
 
             String originalFilename = document.getOriginalFilename();
@@ -396,7 +403,9 @@ public class SignerController {
             @RequestParam(value = "x", required = false) Integer x,
             @RequestParam(value = "y", required = false) Integer y,
             @RequestParam(value = "width", defaultValue = "240") int width,
-            @RequestParam(value = "height", defaultValue = "102") int height) {
+            @RequestParam(value = "height", defaultValue = "102") int height,
+            @RequestParam(value = "timestamp", defaultValue = "false") boolean timestamp,
+            @RequestParam(value = "tsaUrl", required = false) String tsaUrl) {
 
         try {
             byte[] pdfBytes = document.getBytes();
@@ -408,6 +417,8 @@ public class SignerController {
                 .location(location)
                 .contactInfo(contact)
                 .build();
+
+            TimestampConfig tsConfig = timestamp ? new TimestampConfig(tsaUrl) : null;
 
             byte[] signedPdf;
 
@@ -423,9 +434,10 @@ public class SignerController {
                     .build();
 
                 signedPdf = signingService.signDocumentPadesVisible(
-                    pdfBytes, certBytes, password, metadata, visualConfig);
+                    pdfBytes, certBytes, password, metadata, visualConfig, tsConfig);
             } else {
-                signedPdf = signingService.signDocumentPades(pdfBytes, certBytes, password, metadata);
+                signedPdf = signingService.signDocumentPades(
+                    pdfBytes, certBytes, password, metadata, tsConfig);
             }
 
             String originalFilename = document.getOriginalFilename();
@@ -553,17 +565,21 @@ public class SignerController {
             byte[] pdfBytes = document.getBytes();
             PdfVerificationResult result = signingService.verifyPdfSignature(pdfBytes);
 
+            java.util.List<Object> sigDtos = new java.util.ArrayList<>();
+            for (com.example.documentsigner.pades.dto.SignatureDetails s : result.getSignatures()) {
+                sigDtos.add(toSignatureDto(s));
+            }
+
+            final java.util.List<Object> sigs = sigDtos;
+            // Legacy v1 contract: `signature` (singular) = most recent signer.
+            // Kept as an alias for backwards-compat with the Svelte frontend and
+            // existing Bruno collections. New consumers should read `signatures[]`.
+            final Object primarySignature = sigs.isEmpty() ? null : sigs.get(sigs.size() - 1);
             return ResponseEntity.ok(new Object() {
                 public final boolean valid = result.isValid();
-                public final Object signature = new Object() {
-                    public final String signerName = result.getSignerName();
-                    public final String signingTime = result.getSigningTime() != null
-                        ? result.getSigningTime().toString() : null;
-                    public final String reason = result.getReason();
-                    public final boolean certificateValid = result.isCertificateValid();
-                    public final boolean integrityValid = result.isIntegrityValid();
-                    public final boolean coversWholeDocument = result.isCoversWholeDocument();
-                };
+                public final int totalSignatures = result.getTotalSignatures();
+                public final java.util.List<Object> signatures = sigs;
+                public final Object signature = primarySignature; // legacy alias
                 public final String filename = document.getOriginalFilename();
                 public final String details = result.getDetails();
                 public final String timestamp = Instant.now().toString();
@@ -573,6 +589,37 @@ public class SignerController {
             return ResponseEntity.badRequest()
                     .body(new ErrorResponse("Failed to read uploaded file", "FILE_READ_ERROR"));
         }
+    }
+
+    private Object toSignatureDto(com.example.documentsigner.pades.dto.SignatureDetails s) {
+        final com.example.documentsigner.pades.dto.TsaInfo tsaSrc = s.getTsa();
+        final com.example.documentsigner.pades.dto.RevocationStatus revSrc = s.getRevocationStatus();
+        return new Object() {
+            public final int index = s.getIndex();
+            public final String signerName = s.getSignerName();
+            public final String signingTime = s.getSigningTime() != null
+                ? s.getSigningTime().toString() : null;
+            public final String reason = s.getReason();
+            public final boolean valid = s.isValid();
+            public final boolean integrityValid = s.isIntegrityValid();
+            public final boolean certificateValid = s.isCertificateValid();
+            public final boolean coversWholeDocument = s.isCoversWholeDocument();
+            public final Object tsa = tsaSrc == null ? null : new Object() {
+                public final String timestamp = tsaSrc.getTimestamp() != null
+                    ? tsaSrc.getTimestamp().toString() : null;
+                public final String tsaName = tsaSrc.getTsaName();
+                public final boolean tokenValid = tsaSrc.isTokenValid();
+            };
+            public final Object revocation = revSrc == null ? null : new Object() {
+                public final String state = revSrc.getState().name();
+                public final String details = revSrc.getDetails();
+                public final String checkedAt = revSrc.getCheckedAt() != null
+                    ? revSrc.getCheckedAt().toString() : null;
+                public final String revokedAt = revSrc.getRevokedAt() != null
+                    ? revSrc.getRevokedAt().toString() : null;
+            };
+            public final String details = s.getDetails();
+        };
     }
 
     /**

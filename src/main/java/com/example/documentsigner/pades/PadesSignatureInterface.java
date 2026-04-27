@@ -1,13 +1,13 @@
 package com.example.documentsigner.pades;
 
+import com.example.documentsigner.exception.TimestampException;
+
 import org.apache.pdfbox.pdmodel.interactive.digitalsignature.SignatureInterface;
 import org.bouncycastle.asn1.ASN1EncodableVector;
 import org.bouncycastle.asn1.ASN1ObjectIdentifier;
-import org.bouncycastle.asn1.ASN1Primitive;
 import org.bouncycastle.asn1.DERSet;
 import org.bouncycastle.asn1.cms.Attribute;
 import org.bouncycastle.asn1.cms.AttributeTable;
-import org.bouncycastle.asn1.cms.CMSAttributes;
 import org.bouncycastle.asn1.ess.ESSCertIDv2;
 import org.bouncycastle.asn1.ess.SigningCertificateV2;
 import org.bouncycastle.asn1.nist.NISTObjectIdentifiers;
@@ -22,6 +22,8 @@ import org.bouncycastle.cms.jcajce.JcaSignerInfoGeneratorBuilder;
 import org.bouncycastle.operator.ContentSigner;
 import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder;
 import org.bouncycastle.operator.jcajce.JcaDigestCalculatorProviderBuilder;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -46,20 +48,34 @@ import java.util.Hashtable;
  */
 public class PadesSignatureInterface implements SignatureInterface {
 
+    private static final Logger log = LoggerFactory.getLogger(PadesSignatureInterface.class);
+
     private final PrivateKey privateKey;
     private final Certificate[] certificateChain;
     private final X509Certificate signingCertificate;
+    private final TimestampService timestampService;
 
     /**
-     * Creates a new PAdES signature interface.
+     * Creates a PAdES-B signature interface (no timestamp).
+     */
+    public PadesSignatureInterface(PrivateKey privateKey, Certificate[] certificateChain) {
+        this(privateKey, certificateChain, null);
+    }
+
+    /**
+     * Creates a PAdES signature interface with optional TSA support.
      *
      * @param privateKey The private key for signing
      * @param certificateChain The full certificate chain (signing cert first)
+     * @param timestampService Optional TSA client; if non-null, output is PAdES-T.
+     *                         If the TSA call fails, falls back to PAdES-B with a warning.
      */
-    public PadesSignatureInterface(PrivateKey privateKey, Certificate[] certificateChain) {
+    public PadesSignatureInterface(PrivateKey privateKey, Certificate[] certificateChain,
+                                   TimestampService timestampService) {
         this.privateKey = privateKey;
         this.certificateChain = certificateChain;
         this.signingCertificate = (X509Certificate) certificateChain[0];
+        this.timestampService = timestampService;
     }
 
     /**
@@ -116,7 +132,19 @@ public class PadesSignatureInterface implements SignatureInterface {
                 false
             );
 
-            return signedData.getEncoded();
+            byte[] padesB = signedData.getEncoded();
+
+            // Optionally upgrade to PAdES-T by embedding a TSA timestamp.
+            // Any failure falls back to PAdES-B (server clock) — never breaks signing.
+            if (timestampService != null) {
+                try {
+                    return timestampService.addTimestamp(padesB);
+                } catch (TimestampException e) {
+                    log.warn("TSA timestamp failed; falling back to PAdES-B (local clock). Cause: {}",
+                             e.getMessage());
+                }
+            }
+            return padesB;
 
         } catch (Exception e) {
             throw new IOException("Failed to generate PAdES signature: " + e.getMessage(), e);

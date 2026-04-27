@@ -1,136 +1,83 @@
 package com.example.documentsigner.pades.dto;
 
+import java.util.ArrayList;
 import java.util.Date;
+import java.util.List;
 
 /**
- * Result of PDF signature verification.
+ * Aggregate verification result for a PDF that may contain one or more signatures.
+ *
+ * {@code valid} is the AND of every individual signature's validity — a single
+ * compromised signer makes the whole document invalid.
+ *
+ * Convenience getters ({@link #getSignerName()}, {@link #getSigningTime()}, etc.)
+ * delegate to the most recent (last-applied) signature, mirroring the legacy
+ * single-signature contract.
  */
 public class PdfVerificationResult {
+
     private boolean valid;
-    private String signerName;
-    private Date signingTime;
-    private String reason;
-    private boolean certificateValid;
-    private boolean integrityValid;
-    private boolean coversWholeDocument;
+    private final List<SignatureDetails> signatures = new ArrayList<>();
     private String details;
 
-    public PdfVerificationResult() {
-    }
+    public boolean isValid()                       { return valid; }
+    public void setValid(boolean valid)            { this.valid = valid; }
 
-    public boolean isValid() {
-        return valid;
-    }
+    public List<SignatureDetails> getSignatures()  { return signatures; }
+    public int getTotalSignatures()                { return signatures.size(); }
 
-    public void setValid(boolean valid) {
-        this.valid = valid;
+    public String getDetails()                     { return details; }
+    public void setDetails(String details)         { this.details = details; }
+
+    // ─── Convenience getters: most recent signature ────────────────────────
+
+    private SignatureDetails primary() {
+        return signatures.isEmpty() ? null : signatures.get(signatures.size() - 1);
     }
 
     public String getSignerName() {
-        return signerName;
-    }
-
-    public void setSignerName(String signerName) {
-        this.signerName = signerName;
+        SignatureDetails p = primary();
+        return p == null ? null : p.getSignerName();
     }
 
     public Date getSigningTime() {
-        return signingTime;
-    }
-
-    public void setSigningTime(Date signingTime) {
-        this.signingTime = signingTime;
+        SignatureDetails p = primary();
+        return p == null ? null : p.getSigningTime();
     }
 
     public String getReason() {
-        return reason;
-    }
-
-    public void setReason(String reason) {
-        this.reason = reason;
+        SignatureDetails p = primary();
+        return p == null ? null : p.getReason();
     }
 
     public boolean isCertificateValid() {
-        return certificateValid;
-    }
-
-    public void setCertificateValid(boolean certificateValid) {
-        this.certificateValid = certificateValid;
+        SignatureDetails p = primary();
+        return p != null && p.isCertificateValid();
     }
 
     public boolean isIntegrityValid() {
-        return integrityValid;
-    }
-
-    public void setIntegrityValid(boolean integrityValid) {
-        this.integrityValid = integrityValid;
+        SignatureDetails p = primary();
+        return p != null && p.isIntegrityValid();
     }
 
     public boolean isCoversWholeDocument() {
-        return coversWholeDocument;
+        SignatureDetails p = primary();
+        return p != null && p.isCoversWholeDocument();
     }
 
-    public void setCoversWholeDocument(boolean coversWholeDocument) {
-        this.coversWholeDocument = coversWholeDocument;
-    }
+    // ─── Builder ───────────────────────────────────────────────────────────
 
-    public String getDetails() {
-        return details;
-    }
-
-    public void setDetails(String details) {
-        this.details = details;
-    }
-
-    public static Builder builder() {
-        return new Builder();
-    }
+    public static Builder builder() { return new Builder(); }
 
     public static class Builder {
         private final PdfVerificationResult result = new PdfVerificationResult();
 
-        public Builder valid(boolean valid) {
-            result.setValid(valid);
+        public Builder valid(boolean valid)   { result.setValid(valid);     return this; }
+        public Builder details(String d)      { result.setDetails(d);       return this; }
+        public Builder addSignature(SignatureDetails s) {
+            result.signatures.add(s);
             return this;
         }
-
-        public Builder signerName(String signerName) {
-            result.setSignerName(signerName);
-            return this;
-        }
-
-        public Builder signingTime(Date signingTime) {
-            result.setSigningTime(signingTime);
-            return this;
-        }
-
-        public Builder reason(String reason) {
-            result.setReason(reason);
-            return this;
-        }
-
-        public Builder certificateValid(boolean certificateValid) {
-            result.setCertificateValid(certificateValid);
-            return this;
-        }
-
-        public Builder integrityValid(boolean integrityValid) {
-            result.setIntegrityValid(integrityValid);
-            return this;
-        }
-
-        public Builder coversWholeDocument(boolean coversWholeDocument) {
-            result.setCoversWholeDocument(coversWholeDocument);
-            return this;
-        }
-
-        public Builder details(String details) {
-            result.setDetails(details);
-            return this;
-        }
-
-        public PdfVerificationResult build() {
-            return result;
-        }
+        public PdfVerificationResult build()  { return result; }
     }
 }

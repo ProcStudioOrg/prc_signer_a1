@@ -6,9 +6,13 @@ import com.example.documentsigner.exception.InvalidDocumentException;
 import com.example.documentsigner.exception.InvalidPasswordException;
 import com.example.documentsigner.exception.SigningException;
 import com.example.documentsigner.pades.dto.PdfVerificationResult;
+import com.example.documentsigner.pades.dto.RevocationStatus;
+import com.example.documentsigner.pades.dto.SignatureDetails;
 import com.example.documentsigner.pades.dto.SignatureMetadata;
 import com.example.documentsigner.pades.dto.SignaturePosition;
 import com.example.documentsigner.pades.dto.SignerDisplayInfo;
+import com.example.documentsigner.pades.dto.TimestampConfig;
+import com.example.documentsigner.pades.dto.TsaInfo;
 import com.example.documentsigner.pades.dto.VisualSignatureConfig;
 
 import org.apache.pdfbox.cos.COSName;
@@ -78,8 +82,11 @@ import java.util.regex.Pattern;
  */
 public class PadesSignerService {
 
-    // Preferred signature container size (32KB should be enough for most signatures with chain)
-    private static final int PREFERRED_SIGNATURE_SIZE = 32768;
+    // Preferred signature container size.
+    // 32KB fits most PAdES-B sigs with chain. PAdES-T adds ~6-12KB for the TSA token,
+    // so we double the placeholder when a timestamp is requested.
+    private static final int PREFERRED_SIGNATURE_SIZE          = 32768;
+    private static final int PREFERRED_SIGNATURE_SIZE_WITH_TST = 65536;
 
     // ProcStudio brand
     private static final String PROCSTUDIO_URL = "https://procstudio.com.br";
@@ -103,6 +110,15 @@ public class PadesSignerService {
      */
     public byte[] signPdf(byte[] pdfBytes, byte[] certBytes, String password,
                           SignatureMetadata metadata) throws SigningException {
+        return signPdf(pdfBytes, certBytes, password, metadata, null);
+    }
+
+    /**
+     * Sign PDF with invisible signature (PAdES-B or PAdES-T if {@code timestampConfig} is non-null).
+     */
+    public byte[] signPdf(byte[] pdfBytes, byte[] certBytes, String password,
+                          SignatureMetadata metadata,
+                          TimestampConfig timestampConfig) throws SigningException {
         validateInputs(pdfBytes, certBytes, password);
 
         try {
@@ -123,13 +139,17 @@ public class PadesSignerService {
                 // Create signature dictionary
                 PDSignature signature = createSignature(signingCert, metadata);
 
-                // Create signature interface
+                // Create signature interface (with optional TSA service)
+                TimestampService tsaService = (timestampConfig != null)
+                    ? new TimestampService(timestampConfig.getTsaUrl())
+                    : null;
                 PadesSignatureInterface signatureInterface =
-                    new PadesSignatureInterface(privateKey, certificateChain);
+                    new PadesSignatureInterface(privateKey, certificateChain, tsaService);
 
-                // Configure signature options
+                // Configure signature options — bump placeholder when timestamping
                 SignatureOptions signatureOptions = new SignatureOptions();
-                signatureOptions.setPreferredSignatureSize(PREFERRED_SIGNATURE_SIZE);
+                signatureOptions.setPreferredSignatureSize(
+                    tsaService != null ? PREFERRED_SIGNATURE_SIZE_WITH_TST : PREFERRED_SIGNATURE_SIZE);
 
                 // Add signature to document
                 document.addSignature(signature, signatureInterface, signatureOptions);
@@ -166,9 +186,19 @@ public class PadesSignerService {
     public byte[] signPdfVisible(byte[] pdfBytes, byte[] certBytes, String password,
                                   SignatureMetadata metadata, VisualSignatureConfig visualConfig)
             throws SigningException {
+        return signPdfVisible(pdfBytes, certBytes, password, metadata, visualConfig, null);
+    }
+
+    /**
+     * Sign PDF with visible signature (PAdES-B or PAdES-T if {@code timestampConfig} is non-null).
+     */
+    public byte[] signPdfVisible(byte[] pdfBytes, byte[] certBytes, String password,
+                                  SignatureMetadata metadata, VisualSignatureConfig visualConfig,
+                                  TimestampConfig timestampConfig)
+            throws SigningException {
 
         if (visualConfig == null || !visualConfig.isEnabled()) {
-            return signPdf(pdfBytes, certBytes, password, metadata);
+            return signPdf(pdfBytes, certBytes, password, metadata, timestampConfig);
         }
 
         validateInputs(pdfBytes, certBytes, password);
@@ -202,9 +232,12 @@ public class PadesSignerService {
                 // Create signature dictionary
                 PDSignature signature = createSignature(signingCert, metadata);
 
-                // Create signature interface
+                // Create signature interface (with optional TSA service)
+                TimestampService tsaService = (timestampConfig != null)
+                    ? new TimestampService(timestampConfig.getTsaUrl())
+                    : null;
                 PadesSignatureInterface signatureInterface =
-                    new PadesSignatureInterface(privateKey, certificateChain);
+                    new PadesSignatureInterface(privateKey, certificateChain, tsaService);
 
                 // Calculate signature rectangle position
                 PDPage page = document.getPage(pageIndex);
@@ -216,7 +249,8 @@ public class PadesSignerService {
 
                 // Create signature options with proper rectangle
                 SignatureOptions signatureOptions = new SignatureOptions();
-                signatureOptions.setPreferredSignatureSize(PREFERRED_SIGNATURE_SIZE);
+                signatureOptions.setPreferredSignatureSize(
+                    tsaService != null ? PREFERRED_SIGNATURE_SIZE_WITH_TST : PREFERRED_SIGNATURE_SIZE);
                 signatureOptions.setPage(pageIndex);
 
                 // Create the visual signature template
@@ -555,84 +589,142 @@ public class PadesSignerService {
      * @throws SigningException if verification fails
      */
     public PdfVerificationResult verifyPdfSignature(byte[] signedPdfBytes) throws SigningException {
-        try {
-            PDDocument document = PDDocument.load(signedPdfBytes);
+        try (PDDocument document = PDDocument.load(signedPdfBytes)) {
+            List<PDSignature> pdfSignatures = document.getSignatureDictionaries();
 
-            try {
-                List<PDSignature> signatures = document.getSignatureDictionaries();
-
-                if (signatures.isEmpty()) {
-                    return PdfVerificationResult.builder()
-                        .valid(false)
-                        .details("No signatures found in document")
-                        .build();
-                }
-
-                // Verify the last (most recent) signature
-                PDSignature signature = signatures.get(signatures.size() - 1);
-
-                // Extract signature content
-                byte[] signatureContent = signature.getContents(signedPdfBytes);
-                byte[] signedContent = signature.getSignedContent(signedPdfBytes);
-
-                // Parse CMS signature
-                CMSSignedData cms = new CMSSignedData(
-                    new CMSProcessableByteArray(signedContent),
-                    signatureContent
-                );
-
-                Store<X509CertificateHolder> certStore = cms.getCertificates();
-                SignerInformationStore signers = cms.getSignerInfos();
-
-                boolean valid = true;
-                String signerName = null;
-
-                for (SignerInformation signer : signers.getSigners()) {
-                    Collection<X509CertificateHolder> certCollection = certStore.getMatches(signer.getSID());
-                    if (!certCollection.isEmpty()) {
-                        X509CertificateHolder certHolder = certCollection.iterator().next();
-                        X509Certificate cert = new JcaX509CertificateConverter()
-                            .setProvider("BC")
-                            .getCertificate(certHolder);
-
-                        signerName = extractCN(cert);
-
-                        // Verify signature
-                        if (!signer.verify(new JcaSimpleSignerInfoVerifierBuilder()
-                                .setProvider("BC")
-                                .build(cert))) {
-                            valid = false;
-                        }
-                    }
-                }
-
-                // Check if signature covers whole document
-                int[] byteRange = signature.getByteRange();
-                boolean coversWholeDocument = false;
-                if (byteRange != null && byteRange.length == 4) {
-                    int lastByte = byteRange[2] + byteRange[3];
-                    coversWholeDocument = lastByte >= signedPdfBytes.length - 1;
-                }
-
+            if (pdfSignatures.isEmpty()) {
                 return PdfVerificationResult.builder()
-                    .valid(valid)
-                    .signerName(signerName)
-                    .signingTime(signature.getSignDate() != null ?
-                        signature.getSignDate().getTime() : null)
-                    .reason(signature.getReason())
-                    .integrityValid(valid)
-                    .certificateValid(true)
-                    .coversWholeDocument(coversWholeDocument)
-                    .details(valid ? "Signature is valid" : "Signature verification failed")
+                    .valid(false)
+                    .details("No signatures found in document")
                     .build();
-
-            } finally {
-                document.close();
             }
+
+            SignatureValidator validator = new SignatureValidator();
+            PdfVerificationResult.Builder resultBuilder = PdfVerificationResult.builder();
+            boolean overallValid = true;
+
+            for (int i = 0; i < pdfSignatures.size(); i++) {
+                SignatureDetails details = verifySingleSignature(
+                    pdfSignatures.get(i), i + 1, signedPdfBytes, validator);
+                resultBuilder.addSignature(details);
+                if (!details.isValid()) overallValid = false;
+            }
+
+            String summary;
+            if (pdfSignatures.size() == 1) {
+                summary = overallValid ? "Signature is valid" : "Signature verification failed";
+            } else {
+                summary = overallValid
+                    ? pdfSignatures.size() + " signatures, all valid"
+                    : pdfSignatures.size() + " signatures — at least one failed";
+            }
+
+            return resultBuilder.valid(overallValid).details(summary).build();
 
         } catch (Exception e) {
             throw new SigningException("Failed to verify PDF signature: " + e.getMessage(), e);
         }
+    }
+
+    private SignatureDetails verifySingleSignature(PDSignature pdfSig, int index,
+                                                    byte[] signedPdfBytes,
+                                                    SignatureValidator validator) {
+        SignatureDetails details = new SignatureDetails();
+        details.setIndex(index);
+        details.setReason(pdfSig.getReason());
+        details.setSigningTime(pdfSig.getSignDate() != null ? pdfSig.getSignDate().getTime() : null);
+
+        // ByteRange coverage
+        int[] byteRange = pdfSig.getByteRange();
+        if (byteRange != null && byteRange.length == 4) {
+            int lastByte = byteRange[2] + byteRange[3];
+            details.setCoversWholeDocument(lastByte >= signedPdfBytes.length - 1);
+        }
+
+        try {
+            byte[] signatureContent = pdfSig.getContents(signedPdfBytes);
+            byte[] signedContent = pdfSig.getSignedContent(signedPdfBytes);
+
+            CMSSignedData cms = new CMSSignedData(
+                new CMSProcessableByteArray(signedContent), signatureContent);
+
+            Store<X509CertificateHolder> certStore = cms.getCertificates();
+            SignerInformationStore signers = cms.getSignerInfos();
+
+            boolean integrityValid = true;
+            X509Certificate signingCert = null;
+            X509Certificate issuerCert = null;
+
+            for (SignerInformation signer : signers.getSigners()) {
+                Collection<X509CertificateHolder> certMatches = certStore.getMatches(signer.getSID());
+                if (certMatches.isEmpty()) continue;
+
+                X509CertificateHolder certHolder = certMatches.iterator().next();
+                signingCert = new JcaX509CertificateConverter().setProvider("BC")
+                    .getCertificate(certHolder);
+                details.setSignerName(extractCN(signingCert));
+
+                if (!signer.verify(new JcaSimpleSignerInfoVerifierBuilder()
+                        .setProvider("BC").build(signingCert))) {
+                    integrityValid = false;
+                }
+
+                // Embedded TSA timestamp (PAdES-T)?
+                TsaInfo tsa = validator.extractTimestamp(signer);
+                if (tsa != null) details.setTsa(tsa);
+
+                // Find issuer cert in store for OCSP
+                issuerCert = findIssuer(signingCert, certStore);
+            }
+
+            details.setIntegrityValid(integrityValid);
+
+            // Certificate validity (period only — chain checking is out of scope here)
+            boolean certValid = false;
+            if (signingCert != null) {
+                try {
+                    signingCert.checkValidity();
+                    certValid = true;
+                } catch (Exception e) {
+                    certValid = false;
+                }
+            }
+            details.setCertificateValid(certValid);
+
+            // OCSP revocation check (best-effort)
+            RevocationStatus revStatus = validator.checkOcsp(signingCert, issuerCert);
+            details.setRevocationStatus(revStatus);
+
+            // Overall validity for THIS signature
+            boolean overall = integrityValid && certValid
+                && revStatus.getState() != RevocationStatus.State.REVOKED;
+            details.setValid(overall);
+            details.setDetails(overall
+                ? "Signature " + index + " is valid"
+                : "Signature " + index + " failed validation");
+
+        } catch (Exception e) {
+            details.setValid(false);
+            details.setIntegrityValid(false);
+            details.setRevocationStatus(RevocationStatus.error("Failed to parse CMS: " + e.getMessage()));
+            details.setDetails("Signature " + index + " parse error: " + e.getMessage());
+        }
+
+        return details;
+    }
+
+    private X509Certificate findIssuer(X509Certificate cert, Store<X509CertificateHolder> certStore) {
+        try {
+            for (X509CertificateHolder holder : certStore.getMatches(null)) {
+                X509Certificate candidate = new JcaX509CertificateConverter()
+                    .setProvider("BC").getCertificate(holder);
+                if (candidate.getSubjectX500Principal().equals(cert.getIssuerX500Principal())
+                        && !candidate.equals(cert)) {
+                    return candidate;
+                }
+            }
+        } catch (Exception ignored) {}
+        return null;
     }
 
     /**
