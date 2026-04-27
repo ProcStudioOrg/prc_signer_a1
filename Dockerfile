@@ -6,14 +6,14 @@ COPY src ./src
 RUN mvn clean package -DskipTests
 
 # Runtime stage
-FROM openjdk:11-jre-slim
+FROM eclipse-temurin:11-jre
 WORKDIR /app
 
 # Create non-root user for security
 RUN useradd -r -u 1001 appuser
 
 # Copy the built JAR
-COPY --from=build /app/target/document-signer-*.jar app.jar
+COPY --from=build /app/target/ProcStudioSigner2.jar app.jar
 
 # Set ownership
 RUN chown appuser:appuser app.jar
