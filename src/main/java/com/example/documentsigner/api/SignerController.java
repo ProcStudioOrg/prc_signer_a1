@@ -571,10 +571,15 @@ public class SignerController {
             }
 
             final java.util.List<Object> sigs = sigDtos;
+            // Legacy v1 contract: `signature` (singular) = most recent signer.
+            // Kept as an alias for backwards-compat with the Svelte frontend and
+            // existing Bruno collections. New consumers should read `signatures[]`.
+            final Object primarySignature = sigs.isEmpty() ? null : sigs.get(sigs.size() - 1);
             return ResponseEntity.ok(new Object() {
                 public final boolean valid = result.isValid();
                 public final int totalSignatures = result.getTotalSignatures();
                 public final java.util.List<Object> signatures = sigs;
+                public final Object signature = primarySignature; // legacy alias
                 public final String filename = document.getOriginalFilename();
                 public final String details = result.getDetails();
                 public final String timestamp = Instant.now().toString();
