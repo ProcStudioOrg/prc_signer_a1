@@ -84,11 +84,12 @@ public class PdfSigner {
         }
 
         try {
-            // Validate PDF format
-            PDDocument document = PDDocument.load(pdfBytes);
-            ByteArrayOutputStream baos = new ByteArrayOutputStream();
-            document.save(baos);
-            document.close();
+            // Validate PDF format only — do NOT re-serialize. PDFBox's save() updates
+            // metadata (e.g. ModDate) non-deterministically, so signing the re-saved
+            // bytes produces a digest that no PDF the caller has can ever match.
+            try (PDDocument document = PDDocument.load(pdfBytes)) {
+                // load() already throws IOException on malformed PDFs; nothing more to do
+            }
 
             // Validate certificate format and password
             KeyStore keystore = KeyStore.getInstance("PKCS12");
@@ -117,8 +118,8 @@ public class PdfSigner {
                 );
             }
 
-            // Sign the document
-            return documentSigner.signDocumentWithCertBytes(baos.toByteArray(), certBytes, password);
+            // Sign the document — sign the ORIGINAL bytes (see comment above)
+            return documentSigner.signDocumentWithCertBytes(pdfBytes, certBytes, password);
 
         } catch (InvalidDocumentException | InvalidCertificateException | InvalidPasswordException | ExpiredCertificateException e) {
             throw e;
@@ -137,13 +138,10 @@ public class PdfSigner {
      */
     public boolean verifySignature(byte[] signatureBytes, byte[] originalPdfBytes) {
         try {
-            // Load and normalize the PDF
-            PDDocument document = PDDocument.load(originalPdfBytes);
-            ByteArrayOutputStream baos = new ByteArrayOutputStream();
-            document.save(baos);
-            document.close();
-
-            return documentSigner.verifySignature(signatureBytes, baos.toByteArray());
+            // Verify against the ORIGINAL bytes — do NOT round-trip through
+            // PDDocument.save(), which is non-deterministic and would compute
+            // a digest that doesn't match what was signed.
+            return documentSigner.verifySignature(signatureBytes, originalPdfBytes);
         } catch (Exception e) {
             throw new SigningException("Failed to verify signature: " + e.getMessage(), e);
         }
