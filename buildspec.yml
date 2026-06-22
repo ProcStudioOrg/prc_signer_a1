@@ -1,0 +1,68 @@
+version: 0.2
+
+phases:
+  pre_build:
+    commands:
+      - echo "=== PRE-BUILD PHASE ==="
+      - echo "Logging in to Amazon ECR..."
+      - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com
+      - echo "Logged in to ECR successfully"
+      
+      - echo "Setting up image tags..."
+      - COMMIT_HASH=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
+      - IMAGE_TAG=${COMMIT_HASH:-latest}
+      - REPOSITORY_URI=$ECR_REPO_URI
+      - echo "Repository URI = $REPOSITORY_URI"
+      - echo "Image Tag = $IMAGE_TAG"
+      
+      - echo "Build information:"
+      - echo "  - Service = $SERVICE_NAME"
+      - echo "  - Region = $AWS_DEFAULT_REGION"
+      - echo "  - Account = $AWS_ACCOUNT_ID"
+      - echo "  - Environment = $ENV_NAME"
+
+  build:
+    commands:
+      - echo "=== BUILD PHASE ==="
+      - echo "Build started on $(date)"
+      
+      # Se você tiver variáveis de ambiente para usar no build
+      # Exemplo: se precisar de build args
+      # - BUILD_ARGS="--build-arg ENV=$ENV_NAME"
+      
+      - echo "Building Docker image..."
+      - docker build -t $REPOSITORY_URI:latest .
+      
+      - echo "Tagging Docker image..."
+      - docker tag $REPOSITORY_URI:latest $REPOSITORY_URI:$IMAGE_TAG
+      
+      - echo "Build completed on $(date)"
+
+  post_build:
+    commands:
+      - echo "=== POST-BUILD PHASE ==="
+      
+      - echo "Pushing Docker images to ECR..."
+      - docker push $REPOSITORY_URI:latest
+      - docker push $REPOSITORY_URI:$IMAGE_TAG
+      - echo "Docker images pushed successfully"
+      
+      - echo "Creating imagedefinitions.json for ECS deployment..."
+      - printf '[{"name":"signer","imageUri":"%s"}]' $REPOSITORY_URI:$IMAGE_TAG > imagedefinitions.json
+      
+      - echo "Contents of imagedefinitions.json:"
+      - cat imagedefinitions.json
+      
+      - echo "Build process completed successfully!"
+
+artifacts:
+  files:
+    - imagedefinitions.json
+  name: BuildArtifact
+
+cache:
+  paths:
+    - '/root/.m2/**/*'        # Maven cache (se usar Java/Maven)
+    - '/root/.gradle/**/*'    # Gradle cache (se usar Java/Gradle)
+    - '/root/.npm/**/*'       # NPM cache (se usar Node.js)
+    - '/root/.cache/pip/**/*' # Pip cache (se usar Python)
