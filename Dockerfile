@@ -7,7 +7,8 @@ COPY src ./src
 RUN mvn clean package -DskipTests
 
 # Runtime stage
-FROM eclipse-temurin:11-jre
+#FROM eclipse-temurin:11-jre
+FROM public.ecr.aws/docker/library/eclipse-temurin:11-jre#
 WORKDIR /app
 
 # Create non-root user for security
