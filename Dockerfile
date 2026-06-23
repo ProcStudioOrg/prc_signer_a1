@@ -15,12 +15,10 @@ RUN mvn clean package -DskipTests
 FROM public.ecr.aws/amazoncorretto/amazoncorretto:11
 WORKDIR /app
 
-# Instalar curl para healthcheck
-RUN yum install -y curl && \
-    yum clean all
-
-# Criar usuário não-root para segurança
-RUN useradd -r -u 1001 appuser
+# Instalar curl e shadow-utils (contém useradd) para healthcheck e criar usuário
+RUN yum install -y curl shadow-utils && \
+    yum clean all && \
+    useradd -r -u 1001 appuser
 
 # Copiar o JAR buildado
 COPY --from=build /app/target/ProcStudioSigner2.jar app.jar
