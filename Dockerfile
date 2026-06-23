@@ -1,14 +1,14 @@
 # Build stage
-#FROM maven:3.8-openjdk-11 AS build
-FROM public.ecr.aws/z5y1f1y8/maven:3.6-amazoncorretto-11 AS build
+FROM maven:3.8-openjdk-11 AS build
+#FROM public.ecr.aws/z5y1f1y8/maven:3.6-amazoncorretto-11 AS build
 WORKDIR /app
 COPY pom.xml .
 COPY src ./src
 RUN mvn clean package -DskipTests
 
 # Runtime stage
-#FROM eclipse-temurin:11-jre
-FROM public.ecr.aws/docker/library/eclipse-temurin:11-jre
+FROM eclipse-temurin:11-jre
+#FROM public.ecr.aws/docker/library/eclipse-temurin:11-jre
 WORKDIR /app
 
 # Create non-root user for security
