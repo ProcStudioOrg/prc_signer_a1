@@ -1,33 +1,41 @@
-# Build stage
-FROM maven:3.8-openjdk-11 AS build
-#FROM public.ecr.aws/z5y1f1y8/maven:3.6-amazoncorretto-11 AS build
+# Build stage - Usando Amazon Corretto 11 com Maven
+FROM public.ecr.aws/amazonlinux/amazonlinux:2023 AS build
 WORKDIR /app
+
+# Instalar Java 11 e Maven
+RUN yum install -y java-11-amazon-corretto-devel maven tar gzip && \
+    yum clean all
+
+# Copiar e construir o projeto backend
 COPY pom.xml .
 COPY src ./src
 RUN mvn clean package -DskipTests
 
-# Runtime stage
-FROM eclipse-temurin:11-jre
-#FROM public.ecr.aws/docker/library/eclipse-temurin:11-jre
+# Runtime stage - Usando Amazon Corretto 11
+FROM public.ecr.aws/amazoncorretto/amazoncorretto:11
 WORKDIR /app
 
-# Create non-root user for security
+# Instalar curl para healthcheck
+RUN yum install -y curl && \
+    yum clean all
+
+# Criar usuário não-root para segurança
 RUN useradd -r -u 1001 appuser
 
-# Copy the built JAR
+# Copiar o JAR buildado
 COPY --from=build /app/target/ProcStudioSigner2.jar app.jar
 
-# Set ownership
+# Definir propriedade
 RUN chown appuser:appuser app.jar
 
 USER appuser
 
-# Expose API port
+# Expor porta da API
 EXPOSE 8080
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
   CMD curl -f http://localhost:8080/api/v1/health || exit 1
 
-# Run in API mode by default
+# Executar em modo API por padrão
 ENTRYPOINT ["java", "-jar", "app.jar", "--api"]
