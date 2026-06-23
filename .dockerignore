@@ -3,6 +3,10 @@ target/
 *.jar
 !src/
 
+# Node modules (será instalado no build)
+frontend/node_modules/
+frontend/dist/
+
 # IDE files
 .idea/
 *.iml
@@ -17,8 +21,11 @@ target/
 test/
 collection/test/
 
-# Documentation
+# Documentation (manter apenas essencial)
 *.md
+!README.md
+!docker/*.conf
+!docker/*.sh
 ANALYSIS.md
 
 # OS files
@@ -28,3 +35,12 @@ Thumbs.db
 # Logs
 *.log
 logs/
+
+# Scripts locais
+run-gui.sh
+run-gui.bat
+
+# Docker
+.dockerignore
+docker-compose.yml
+docker-compose.override.yml
