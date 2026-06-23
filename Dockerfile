@@ -15,7 +15,7 @@ COPY pom.xml .
 COPY src ./src
 RUN mvn clean package -DskipTests
 
-FROM public.ecr.aws/docker/library/node:18 AS frontend-build
+FROM public.ecr.aws/docker/library/node:22 AS frontend-build
 
 WORKDIR /frontend
 
