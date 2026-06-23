@@ -1,5 +1,9 @@
 version: 0.2
 
+# IMPORTANTE: Configure seu projeto CodeBuild com:
+# - Tipo de ambiente: ARM_CONTAINER
+# - Imagem: aws/codebuild/amazonlinux2-aarch64-standard:3.0
+
 phases:
   pre_build:
     commands:
@@ -31,7 +35,7 @@ phases:
       # - BUILD_ARGS="--build-arg ENV=$ENV_NAME"
       
       - echo "Building Docker image..."
-      - docker build -t $REPOSITORY_URI:latest .
+      - docker build --platform linux/arm64 -t $REPOSITORY_URI:latest .
       
       - echo "Tagging Docker image..."
       - docker tag $REPOSITORY_URI:latest $REPOSITORY_URI:$IMAGE_TAG
