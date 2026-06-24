@@ -221,12 +221,16 @@ public class PadesSignerService {
             PDDocument document = PDDocument.load(pdfBytes);
 
             try {
-                // Validate page number
-                int pageIndex = visualConfig.getPage() - 1;
-                if (pageIndex < 0 || pageIndex >= document.getNumberOfPages()) {
+                // Resolve target page. A non-positive page value is a sentinel
+                // meaning "last page" — handy as a sane default for signatures.
+                int totalPages = document.getNumberOfPages();
+                int pageIndex = visualConfig.getPage() <= 0
+                    ? totalPages - 1
+                    : visualConfig.getPage() - 1;
+                if (pageIndex < 0 || pageIndex >= totalPages) {
                     throw new InvalidDocumentException(
                         "Invalid page number: " + visualConfig.getPage() +
-                        ". Document has " + document.getNumberOfPages() + " pages.");
+                        ". Document has " + totalPages + " pages.");
                 }
 
                 // Create signature dictionary

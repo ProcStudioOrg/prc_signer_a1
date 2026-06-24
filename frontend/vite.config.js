@@ -7,8 +7,9 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'http://localhost:8080',
+        target: 'https://signer.procstudio.com.br',
         changeOrigin: true,
+        secure: true,
       },
     },
   },
