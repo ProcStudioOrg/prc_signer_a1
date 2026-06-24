@@ -28,12 +28,13 @@ RUN npm ci
 COPY frontend/ ./
 RUN npm run build
 
-FROM --platform=linux/amd64 public.ecr.aws/amazoncorretto/amazoncorretto:11
+FROM --platform=linux/amd64 public.ecr.aws/amazonlinux/amazonlinux:2023
 
 WORKDIR /app
 
 # Instalar dependências runtime
 RUN yum install -y \
+    java-11-amazon-corretto \
     curl \
     shadow-utils \
     supervisor \
