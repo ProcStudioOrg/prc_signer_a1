@@ -37,8 +37,10 @@ RUN yum install -y \
     java-11-amazon-corretto \
     curl \
     shadow-utils \
-    supervisor \
+    python3 \
+    python3-pip \
     nginx && \
+    pip3 install supervisor && \
     yum clean all && \
     useradd -r -u 1001 appuser
 

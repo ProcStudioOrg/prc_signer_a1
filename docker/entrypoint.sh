@@ -13,5 +13,5 @@ echo ""
 mkdir -p /var/log/supervisor
 mkdir -p /var/log/nginx
 
-# Iniciar Supervisor
-exec /usr/bin/supervisord -c /etc/supervisord.conf
+# Iniciar Supervisor (instalado via pip, binário em /usr/local/bin)
+exec /usr/local/bin/supervisord -c /etc/supervisord.conf
