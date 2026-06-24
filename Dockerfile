@@ -1,4 +1,4 @@
-FROM public.ecr.aws/amazonlinux/amazonlinux:2023 AS backend-build
+FROM --platform=linux/amd64 public.ecr.aws/amazonlinux/amazonlinux:2023 AS backend-build
 
 WORKDIR /app
 
@@ -15,7 +15,8 @@ COPY pom.xml .
 COPY src ./src
 RUN mvn clean package -DskipTests
 
-FROM public.ecr.aws/docker/library/node:22 AS frontend-build
+
+FROM --platform=linux/amd64 public.ecr.aws/docker/library/node:22 AS frontend-build
 
 WORKDIR /frontend
 
@@ -27,7 +28,7 @@ RUN npm ci
 COPY frontend/ ./
 RUN npm run build
 
-FROM public.ecr.aws/amazoncorretto/amazoncorretto:11
+FROM --platform=linux/amd64 public.ecr.aws/amazoncorretto/amazoncorretto:11
 
 WORKDIR /app
 
