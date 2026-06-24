@@ -35,14 +35,17 @@ WORKDIR /app
 # Instalar dependências runtime
 RUN yum install -y \
     java-11-amazon-corretto \
-    curl \
     shadow-utils \
     python3 \
     python3-pip \
     nginx && \
-    pip3 install supervisor && \
-    yum clean all && \
-    useradd -r -u 1001 appuser
+    yum clean all
+
+# Instalar supervisor via pip
+RUN pip3 install supervisor
+
+# Criar usuário não-root
+RUN useradd -r -u 1001 appuser
 
 # Copiar JAR do backend
 COPY --from=backend-build /app/target/ProcStudioSigner2.jar app.jar
