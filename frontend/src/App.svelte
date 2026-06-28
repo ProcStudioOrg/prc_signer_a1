@@ -709,10 +709,13 @@
   /* Steps */
   .step {
     display: grid;
-    grid-template-columns: auto 1fr;
+    grid-template-columns: auto minmax(0, 1fr);
     gap: 0.9rem;
     padding-block: 1.1rem;
     border-top: 1px solid var(--border);
+  }
+  .step-body {
+    min-width: 0; /* allow the content column to shrink so children don't overflow the card */
   }
   .step:first-of-type {
     border-top: none;
@@ -782,6 +785,7 @@
   }
   .filepick-text {
     flex: 1;
+    min-width: 0; /* allow ellipsis instead of forcing the picker wider than the card */
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -804,6 +808,7 @@
   }
   .text-input {
     flex: 1;
+    min-width: 0; /* let the input shrink in flex rows so the row never overflows */
     padding: 0.65rem 0.8rem;
     border: 1px solid var(--border-strong);
     border-radius: var(--radius-sm);
@@ -1168,6 +1173,28 @@
     .choice-grid {
       grid-template-columns: 1fr;
     }
+    /* Password + "Verificar" stack instead of getting squeezed off-card */
+    .input-row {
+      flex-direction: column;
+      align-items: stretch;
+    }
+    .input-row .btn {
+      width: 100%;
+    }
+    /* Visual-signature controls go full width and drop the indent */
+    .visual-fields {
+      flex-direction: column;
+      gap: 0.8rem;
+      padding-left: 0;
+    }
+    .inline-field {
+      width: 100%;
+    }
+    .inline-field select,
+    .inline-field .mini-input {
+      flex: 1;
+      min-width: 0;
+    }
     .footer {
       flex-direction: column;
       gap: 0.4rem;
@@ -1175,6 +1202,13 @@
     }
     .trust li {
       font-size: 0.88rem;
+    }
+  }
+
+  /* Tighten the CTA feature grid on the smallest phones */
+  @media (max-width: 380px) {
+    .cta-features {
+      grid-template-columns: 1fr;
     }
   }
 
