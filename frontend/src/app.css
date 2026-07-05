@@ -29,6 +29,19 @@
   --err-border: #f3a5a5;
   --err-text: #9b1c1c;
 
+  /* ── gov.br accent (modo Verificar) — LIGHT ─────────────────── */
+  --govbr: #1351b4;          /* azul gov.br sólido (fundo de botão) */
+  --govbr-hover: #0e3f88;
+  --govbr-ink: #1351b4;      /* texto/badge */
+  --govbr-soft: #e5edfa;
+  --govbr-border: #a9c4ee;
+  --on-govbr: #ffffff;
+
+  /* Tricolor oficial do logotipo gov.br (DSGov) */
+  --govbr-logo-blue: #1351b4;
+  --govbr-logo-yellow: #ffcd07;
+  --govbr-logo-green: #168821;
+
   --ring: rgba(0, 136, 255, 0.18);
   --shadow-sm: 0 1px 2px rgba(15, 26, 62, 0.06);
   --shadow-md: 0 10px 30px -12px rgba(15, 26, 62, 0.22);
@@ -66,6 +79,14 @@
     --err-bg: rgba(214, 70, 70, 0.16);
     --err-border: rgba(240, 120, 120, 0.5);
     --err-text: #ff9d9d;
+    --govbr: #2f6fd6;
+    --govbr-hover: #4785e0;
+    --govbr-ink: #6ba0e8;
+    --govbr-soft: rgba(77, 139, 214, 0.16);
+    --govbr-border: rgba(107, 160, 232, 0.42);
+    --govbr-logo-blue: #6ba0e8;
+    --govbr-logo-yellow: #ffcd07;
+    --govbr-logo-green: #4cc06a;
     --ring: rgba(74, 168, 255, 0.3);
     --shadow-md: 0 10px 30px -12px rgba(0, 0, 0, 0.6);
     --shadow-lg: 0 30px 60px -24px rgba(0, 0, 0, 0.7);
@@ -95,6 +116,14 @@
   --err-bg: rgba(214, 70, 70, 0.16);
   --err-border: rgba(240, 120, 120, 0.5);
   --err-text: #ff9d9d;
+  --govbr: #2f6fd6;
+  --govbr-hover: #4785e0;
+  --govbr-ink: #6ba0e8;
+  --govbr-soft: rgba(77, 139, 214, 0.16);
+  --govbr-border: rgba(107, 160, 232, 0.42);
+  --govbr-logo-blue: #6ba0e8;
+  --govbr-logo-yellow: #ffcd07;
+  --govbr-logo-green: #4cc06a;
   --ring: rgba(74, 168, 255, 0.3);
   --shadow-md: 0 10px 30px -12px rgba(0, 0, 0, 0.6);
   --shadow-lg: 0 30px 60px -24px rgba(0, 0, 0, 0.7);

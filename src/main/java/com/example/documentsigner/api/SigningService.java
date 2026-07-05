@@ -1,8 +1,6 @@
 package com.example.documentsigner.api;
 
 import com.example.documentsigner.CertificateValidator;
-import com.example.documentsigner.ItiVerificador;
-import com.example.documentsigner.ItiVerificador.ItiVerificationResult;
 import com.example.documentsigner.PdfSigner;
 import com.example.documentsigner.api.dto.CertificateInfo;
 import com.example.documentsigner.pades.dto.PdfVerificationResult;
@@ -10,8 +8,6 @@ import com.example.documentsigner.pades.dto.SignatureMetadata;
 import com.example.documentsigner.pades.dto.TimestampConfig;
 import com.example.documentsigner.pades.dto.VisualSignatureConfig;
 import org.springframework.stereotype.Service;
-
-import java.io.IOException;
 
 @Service
 public class SigningService {
@@ -65,89 +61,6 @@ public class SigningService {
      */
     public boolean verifySignature(byte[] signatureBytes, byte[] originalPdfBytes) {
         return pdfSigner.verifySignature(signatureBytes, originalPdfBytes);
-    }
-
-    /**
-     * Verify a detached signature using the ITI Verificador (Brazilian Government).
-     * This is the official external source of truth for ICP-Brasil signatures.
-     *
-     * @param signatureBytes The P7S signature bytes
-     * @param documentBytes The original document bytes
-     * @param signatureFilename Filename for the signature
-     * @param documentFilename Filename for the document
-     * @param useStaging true to use staging environment
-     * @return ItiVerificationResult with the validation response
-     * @throws IOException if the request fails
-     */
-    public ItiVerificationResult verifyWithIti(
-            byte[] signatureBytes,
-            byte[] documentBytes,
-            String signatureFilename,
-            String documentFilename,
-            boolean useStaging) throws IOException {
-
-        ItiVerificador verificador = new ItiVerificador(useStaging);
-        return verificador.verifyDetachedSignature(
-            signatureBytes,
-            documentBytes,
-            signatureFilename,
-            documentFilename
-        );
-    }
-
-    /**
-     * Sign a document and then verify it with ITI Verificador.
-     * Complete flow for signing with external validation.
-     *
-     * @param pdfBytes The PDF document bytes
-     * @param certBytes The PFX certificate bytes
-     * @param password The certificate password
-     * @param documentFilename Original document filename
-     * @param useStaging true to use ITI staging environment
-     * @return SignAndVerifyResult containing signature and ITI validation
-     * @throws IOException if ITI verification fails
-     */
-    public SignAndVerifyResult signAndVerifyWithIti(
-            byte[] pdfBytes,
-            byte[] certBytes,
-            String password,
-            String documentFilename,
-            boolean useStaging) throws IOException {
-
-        // Sign the document
-        byte[] signature = pdfSigner.signPdfBytes(pdfBytes, certBytes, password);
-
-        // Verify with ITI
-        ItiVerificationResult itiResult = verifyWithIti(
-            signature,
-            pdfBytes,
-            documentFilename + ".p7s",
-            documentFilename,
-            useStaging
-        );
-
-        return new SignAndVerifyResult(signature, itiResult);
-    }
-
-    /**
-     * Result of sign and verify operation.
-     */
-    public static class SignAndVerifyResult {
-        private final byte[] signature;
-        private final ItiVerificationResult itiResult;
-
-        public SignAndVerifyResult(byte[] signature, ItiVerificationResult itiResult) {
-            this.signature = signature;
-            this.itiResult = itiResult;
-        }
-
-        public byte[] getSignature() {
-            return signature;
-        }
-
-        public ItiVerificationResult getItiResult() {
-            return itiResult;
-        }
     }
 
     // ==================== PAdES Signing Methods ====================
@@ -224,28 +137,19 @@ public class SigningService {
     }
 
     /**
-     * Sign PDF with PAdES and verify with ITI Verificador.
+     * Sign PDF with PAdES and verify it LOCALLY (BouncyCastle) in one call.
      *
      * @param pdfBytes The PDF document bytes
      * @param certBytes The PFX certificate bytes
      * @param password The certificate password
-     * @param documentFilename Original document filename
-     * @param useStaging true to use ITI staging environment
-     * @return Result containing signed PDF and ITI validation
-     * @throws IOException if ITI verification fails
+     * @return Result containing signed PDF and local verification result
      */
-    public PadesSignAndVerifyResult signPadesAndVerifyWithIti(
+    public PadesSignAndVerifyResult signPadesAndVerify(
             byte[] pdfBytes,
             byte[] certBytes,
-            String password,
-            String documentFilename,
-            boolean useStaging) throws IOException {
+            String password) {
 
-        // Sign the document with PAdES
         byte[] signedPdf = pdfSigner.signPdfPades(pdfBytes, certBytes, password);
-
-        // Verify with ITI (Note: ITI may require specific format for PAdES)
-        // For now, we verify the signed PDF directly
         PdfVerificationResult localVerification = pdfSigner.verifyPdfSignature(signedPdf);
 
         return new PadesSignAndVerifyResult(signedPdf, localVerification);

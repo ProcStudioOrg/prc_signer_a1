@@ -37,11 +37,13 @@ public class DocumentSigner {
     private byte[] signDocumentWithStream(byte[] document, InputStream certStream, String pfxPassword) throws Exception {
         // Load the PFX/PKCS12 keystore
         KeyStore keystore = KeyStore.getInstance("PKCS12");
-        keystore.load(certStream, pfxPassword.toCharArray());
+        char[] pw = pfxPassword.toCharArray();
+        keystore.load(certStream, pw);
 
         // Get the private key and certificate
         String alias = keystore.aliases().nextElement();
-        PrivateKey privateKey = (PrivateKey) keystore.getKey(alias, pfxPassword.toCharArray());
+        PrivateKey privateKey = (PrivateKey) keystore.getKey(alias, pw);
+        com.example.documentsigner.util.Sensitive.wipe(pw); // senha não é mais necessária
         Certificate[] certificateChain = keystore.getCertificateChain(alias);
         X509Certificate signingCert = (X509Certificate) certificateChain[0];
 
@@ -86,10 +88,17 @@ public class DocumentSigner {
         for (SignerInformation signer : signers.getSigners()) {
             Collection<X509CertificateHolder> certCollection = certStore.getMatches(signer.getSID());
             X509CertificateHolder cert = certCollection.iterator().next();
-            
-            if (!signer.verify(new JcaSimpleSignerInfoVerifierBuilder()
-                    .setProvider("BC")
-                    .build(new JcaX509CertificateConverter().getCertificate(cert)))) {
+
+            try {
+                if (!signer.verify(new JcaSimpleSignerInfoVerifierBuilder()
+                        .setProvider("BC")
+                        .build(new JcaX509CertificateConverter().getCertificate(cert)))) {
+                    return false;
+                }
+            } catch (CMSException e) {
+                // BouncyCastle throws (não retorna false) quando o digest não bate
+                // — ex.: documento adulterado ou assinatura de outro arquivo. Isso é
+                // um RESULTADO de verificação (assinatura inválida), não erro interno.
                 return false;
             }
         }

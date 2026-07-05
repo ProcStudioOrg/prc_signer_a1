@@ -125,7 +125,9 @@ public class PadesSignerService {
             // Load certificate and private key
             KeyStore keystore = loadKeyStore(certBytes, password);
             String alias = keystore.aliases().nextElement();
-            PrivateKey privateKey = (PrivateKey) keystore.getKey(alias, password.toCharArray());
+            char[] pw = password.toCharArray();
+            PrivateKey privateKey = (PrivateKey) keystore.getKey(alias, pw);
+            com.example.documentsigner.util.Sensitive.wipe(pw);
             Certificate[] certificateChain = keystore.getCertificateChain(alias);
             X509Certificate signingCert = (X509Certificate) certificateChain[0];
 
@@ -207,7 +209,9 @@ public class PadesSignerService {
             // Load certificate and private key
             KeyStore keystore = loadKeyStore(certBytes, password);
             String alias = keystore.aliases().nextElement();
-            PrivateKey privateKey = (PrivateKey) keystore.getKey(alias, password.toCharArray());
+            char[] pw = password.toCharArray();
+            PrivateKey privateKey = (PrivateKey) keystore.getKey(alias, pw);
+            com.example.documentsigner.util.Sensitive.wipe(pw);
             Certificate[] certificateChain = keystore.getCertificateChain(alias);
             X509Certificate signingCert = (X509Certificate) certificateChain[0];
 
@@ -593,6 +597,13 @@ public class PadesSignerService {
      * @throws SigningException if verification fails
      */
     public PdfVerificationResult verifyPdfSignature(byte[] signedPdfBytes) throws SigningException {
+        // Guard de input (culpa do cliente → 400, não 500). #9/#15c
+        if (signedPdfBytes == null || signedPdfBytes.length == 0) {
+            throw new InvalidDocumentException("PDF document is empty or null");
+        }
+        if (!startsWithPdfMagic(signedPdfBytes)) {
+            throw new InvalidDocumentException("Not a PDF file (missing %PDF header)");
+        }
         try (PDDocument document = PDDocument.load(signedPdfBytes)) {
             List<PDSignature> pdfSignatures = document.getSignatureDictionaries();
 
@@ -625,9 +636,26 @@ public class PadesSignerService {
 
             return resultBuilder.valid(overallValid).details(summary).build();
 
+        } catch (InvalidDocumentException e) {
+            throw e; // já é erro de cliente (400) — não reembrulhar em 500
+        } catch (java.io.IOException e) {
+            // PDF malformado/corrompido — culpa do input do cliente → 400.
+            throw new InvalidDocumentException("Invalid or corrupted PDF document");
         } catch (Exception e) {
             throw new SigningException("Failed to verify PDF signature: " + e.getMessage(), e);
         }
+    }
+
+    /** Procura o header %PDF nos primeiros 1024 bytes (tolerância da spec). */
+    private boolean startsWithPdfMagic(byte[] b) {
+        if (b.length < 5) return false;
+        int limit = Math.min(b.length - 4, 1024);
+        for (int i = 0; i <= limit; i++) {
+            if (b[i] == '%' && b[i + 1] == 'P' && b[i + 2] == 'D' && b[i + 3] == 'F') {
+                return true;
+            }
+        }
+        return false;
     }
 
     private SignatureDetails verifySingleSignature(PDSignature pdfSig, int index,
@@ -682,6 +710,12 @@ public class PadesSignerService {
             }
 
             details.setIntegrityValid(integrityValid);
+
+            // Certificate origin (ICP-Brasil / gov.br / other) and CPF, when present.
+            if (signingCert != null) {
+                details.setCertificateType(CertificateTypeDetector.detect(signingCert));
+                details.setCpf(extractCpf(signingCert));
+            }
 
             // Certificate validity (period only — chain checking is out of scope here)
             boolean certValid = false;
@@ -778,13 +812,16 @@ public class PadesSignerService {
 
     private KeyStore loadKeyStore(byte[] certBytes, String password) throws Exception {
         KeyStore keystore = KeyStore.getInstance("PKCS12");
+        char[] pw = password.toCharArray();
         try {
-            keystore.load(new ByteArrayInputStream(certBytes), password.toCharArray());
+            keystore.load(new ByteArrayInputStream(certBytes), pw);
         } catch (IOException e) {
             if (e.getCause() instanceof java.security.UnrecoverableKeyException) {
                 throw new InvalidPasswordException("Incorrect certificate password", e);
             }
             throw new InvalidCertificateException("Invalid certificate format", e);
+        } finally {
+            com.example.documentsigner.util.Sensitive.wipe(pw);
         }
         return keystore;
     }

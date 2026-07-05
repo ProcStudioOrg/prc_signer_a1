@@ -93,13 +93,16 @@ public class PdfSigner {
 
             // Validate certificate format and password
             KeyStore keystore = KeyStore.getInstance("PKCS12");
+            char[] pw = password.toCharArray();
             try {
-                keystore.load(new ByteArrayInputStream(certBytes), password.toCharArray());
+                keystore.load(new ByteArrayInputStream(certBytes), pw);
             } catch (java.io.IOException e) {
                 if (e.getCause() instanceof java.security.UnrecoverableKeyException) {
                     throw new InvalidPasswordException("Incorrect certificate password", e);
                 }
                 throw new InvalidCertificateException("Invalid certificate format", e);
+            } finally {
+                com.example.documentsigner.util.Sensitive.wipe(pw);
             }
 
             // Check certificate expiry

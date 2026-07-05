@@ -16,6 +16,8 @@ public class CertificateInfo {
     private boolean expired;
     private long daysUntilExpiry;
     private String algorithm;
+    private String certificateType;       // ICP_BRASIL | GOV_BR | OTHER
+    private String certificateTypeLabel;  // rótulo legível
     private String error;
 
     public CertificateInfo() {
@@ -122,6 +124,22 @@ public class CertificateInfo {
 
     public void setAlgorithm(String algorithm) {
         this.algorithm = algorithm;
+    }
+
+    public String getCertificateType() {
+        return certificateType;
+    }
+
+    public void setCertificateType(String certificateType) {
+        this.certificateType = certificateType;
+    }
+
+    public String getCertificateTypeLabel() {
+        return certificateTypeLabel;
+    }
+
+    public void setCertificateTypeLabel(String certificateTypeLabel) {
+        this.certificateTypeLabel = certificateTypeLabel;
     }
 
     public String getError() {

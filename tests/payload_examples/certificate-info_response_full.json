@@ -1,0 +1,13 @@
+{
+    "valid": true,
+    "subject": "CN=BRUNO PELLIZZETTI:05880253996,OU=AC SyngularID Multipla,OU=26718487000136,OU=Videoconferencia,OU=Certificado Digital PF A1,O=ICP-Brasil,C=BR",
+    "commonName": "BRUNO PELLIZZETTI:05880253996",
+    "issuer": "CN=AC SyngularID Multipla,O=ICP-Brasil,OU=AC SyngularID,C=BR",
+    "serialNumber": "95B6B0768D2E51D14214",
+    "notBefore": "2025-09-19T12:13:49.000+00:00",
+    "notAfter": "2026-09-19T12:13:49.000+00:00",
+    "expired": false,
+    "daysUntilExpiry": 77,
+    "algorithm": "SHA256withRSA",
+    "error": null
+}

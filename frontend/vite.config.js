@@ -7,9 +7,19 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'https://signer.procstudio.com.br',
+        // LOCAL DEBUG: aponta pro backend rodando local (jar --api na 8081).
+        // Reverter todo este bloco para { target: 'https://signer.procstudio.com.br',
+        // changeOrigin: true, secure: true } antes de commitar.
+        target: 'http://localhost:8081',
         changeOrigin: true,
-        secure: true,
+        secure: false,
+        // O backend restringe CORS às origens procstudio; o browser manda
+        // Origin: 127.0.0.1:5173. Reescrevemos p/ uma origem permitida só no dev.
+        configure: (proxy) => {
+          proxy.on('proxyReq', (proxyReq) => {
+            proxyReq.setHeader('origin', 'https://signer.procstudio.com.br');
+          });
+        },
       },
     },
   },

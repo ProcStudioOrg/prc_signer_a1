@@ -1,0 +1,51 @@
+{
+    "valid": true,
+    "totalSignatures": 1,
+    "signatures": [
+        {
+            "index": 1,
+            "signerName": "BRUNO PELLIZZETTI",
+            "cpf": "05880253996",
+            "certificateType": "ICP_BRASIL",
+            "certificateTypeLabel": "ICP-Brasil (A1/A3)",
+            "signingTime": "Fri Jul 03 23:50:57 UTC 2026",
+            "reason": null,
+            "valid": true,
+            "integrityValid": true,
+            "certificateValid": true,
+            "coversWholeDocument": true,
+            "tsa": null,
+            "revocation": {
+                "state": "NOT_CHECKED",
+                "details": "Certificate has no OCSP URL in AIA extension",
+                "checkedAt": "Fri Jul 03 23:50:57 UTC 2026",
+                "revokedAt": null
+            },
+            "details": "Signature 1 is valid"
+        }
+    ],
+    "signature": {
+        "index": 1,
+        "signerName": "BRUNO PELLIZZETTI",
+        "cpf": "05880253996",
+        "certificateType": "ICP_BRASIL",
+        "certificateTypeLabel": "ICP-Brasil (A1/A3)",
+        "signingTime": "Fri Jul 03 23:50:57 UTC 2026",
+        "reason": null,
+        "valid": true,
+        "integrityValid": true,
+        "certificateValid": true,
+        "coversWholeDocument": true,
+        "tsa": null,
+        "revocation": {
+            "state": "NOT_CHECKED",
+            "details": "Certificate has no OCSP URL in AIA extension",
+            "checkedAt": "Fri Jul 03 23:50:57 UTC 2026",
+            "revokedAt": null
+        },
+        "details": "Signature 1 is valid"
+    },
+    "filename": "a1signed.pdf",
+    "details": "Signature is valid",
+    "timestamp": "2026-07-03T23:50:57.602873966Z"
+}

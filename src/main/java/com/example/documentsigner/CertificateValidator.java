@@ -58,11 +58,13 @@ public class CertificateValidator {
     private static boolean validatePassword(InputStream certStream, String password) {
         try {
             KeyStore keystore = KeyStore.getInstance("PKCS12");
-            keystore.load(certStream, password.toCharArray());
+            char[] pw = password.toCharArray();
+            keystore.load(certStream, pw);
 
             // Try to get the private key to verify password works for key access
             String alias = keystore.aliases().nextElement();
-            keystore.getKey(alias, password.toCharArray());
+            keystore.getKey(alias, pw);
+            com.example.documentsigner.util.Sensitive.wipe(pw);
 
             return true;
         } catch (java.security.UnrecoverableKeyException e) {
@@ -112,7 +114,9 @@ public class CertificateValidator {
     private static void checkExpiry(InputStream certStream, String password) {
         try {
             KeyStore keystore = KeyStore.getInstance("PKCS12");
-            keystore.load(certStream, password.toCharArray());
+            char[] pw = password.toCharArray();
+            keystore.load(certStream, pw);
+            com.example.documentsigner.util.Sensitive.wipe(pw);
 
             String alias = keystore.aliases().nextElement();
             X509Certificate cert = (X509Certificate) keystore.getCertificate(alias);
@@ -172,7 +176,9 @@ public class CertificateValidator {
     private static CertificateInfo getCertificateInfo(InputStream certStream, String password) {
         try {
             KeyStore keystore = KeyStore.getInstance("PKCS12");
-            keystore.load(certStream, password.toCharArray());
+            char[] pw = password.toCharArray();
+            keystore.load(certStream, pw);
+            com.example.documentsigner.util.Sensitive.wipe(pw);
 
             String alias = keystore.aliases().nextElement();
             X509Certificate cert = (X509Certificate) keystore.getCertificate(alias);
@@ -192,7 +198,7 @@ public class CertificateValidator {
 
             String algorithm = cert.getSigAlgName();
 
-            return new CertificateInfo(
+            CertificateInfo info = new CertificateInfo(
                 true,
                 subject,
                 commonName,
@@ -204,6 +210,14 @@ public class CertificateValidator {
                 daysUntilExpiry,
                 algorithm
             );
+
+            // Origem do certificado: ICP-Brasil (A1/A3) / gov.br / outro.
+            com.example.documentsigner.pades.dto.CertificateType type =
+                com.example.documentsigner.pades.CertificateTypeDetector.detect(cert);
+            info.setCertificateType(type.name());
+            info.setCertificateTypeLabel(type.getLabel());
+
+            return info;
 
         } catch (java.io.IOException e) {
             if (e.getCause() instanceof java.security.UnrecoverableKeyException ||

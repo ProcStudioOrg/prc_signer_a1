@@ -42,14 +42,11 @@
   HTTP→HTTPS, habilitar HSTS. Confirmar que o proxy **não faz buffer em disco** do
   corpo do upload (`proxy_request_buffering off` no nginx, ou buffer em memória).
 
-### 3. CORS aberto (`origins = "*"`)
-- **Onde:** `src/main/java/com/example/documentsigner/api/SignerController.java:31`
-  — `@CrossOrigin(origins = "*")`.
-- **Risco:** qualquer site pode chamar a API a partir do navegador da vítima. Para
-  um endpoint que recebe certificado + senha, isso amplia muito a superfície (ex.:
-  página maliciosa que reusa um upload em andamento / phishing de fluxo).
-- **Ação:** restringir a origem ao domínio oficial do front (lista branca). Remover
-  o wildcard em produção.
+### 3. CORS aberto (`origins = "*"`) — ✅ RESOLVIDO (2026-07-03)
+- **Onde:** `SignerController` — era `@CrossOrigin(origins = "*")`.
+- **Correção aplicada:** whitelist com as origens oficiais ProcStudio:
+  `https://signer.procstudio.com.br`, `https://hml.procstudio.com.br`,
+  `https://procstudio.com.br`. Wildcard removido.
 
 ### 4. Sem autenticação e sem rate limiting
 - **Onde:** nenhuma config de Spring Security / `@PreAuthorize` / rate limiter no
@@ -81,19 +78,21 @@
 - **Ação:** mensagens genéricas + código de correlação para o cliente; detalhe só no
   log do servidor. Não concatenar `getMessage()` na resposta.
 
-### 7. Senha como `String` (não `char[]`)
-- **Onde:** `CertificateValidator.java` (e toda a cadeia) usa `String password` →
-  `password.toCharArray()`. `PdfSigner`/`SigningService` propagam `String`.
-- **Risco:** `String` é imutável e fica no heap até o GC (não dá pra zerar). A senha
-  do certificado persiste mais tempo na memória; aparece em heap dump.
-- **Ação:** quando viável, usar `char[]` ponta a ponta e zerar (`Arrays.fill`) após
-  uso. Zerar também os `byte[]` do certificado e da chave após assinar.
+### 7. Senha como `String` (não `char[]`) — ✅ PARCIALMENTE RESOLVIDO (2026-07-04)
+- **Feito:** todo ponto de `keystore.load`/`getKey` agora usa um `char[] pw` único,
+  zerado (`Sensitive.wipe`) logo após extrair a chave (DocumentSigner, PdfSigner,
+  PadesSignerService, CertificateValidator).
+- **Limite honesto (não fechável em puro JCA):** a senha **chega** da camada HTTP
+  como `String` imutável (`@RequestParam`) — essa cópia não dá pra zerar, persiste
+  até o GC. E o `PrivateKey` decifrado não é destruível de forma confiável (RSA
+  lança em `destroy()`). Então é redução de janela, não eliminação. Ver `Sensitive.java`.
 
-### 8. Zeragem de segredos em memória
-- **Onde:** controller/serviço não limpam `certBytes` / `pdfBytes` / senha após uso.
-- **Risco:** segredos sobrevivem no heap até o GC; risco em heap dump / swap.
-- **Ação:** após assinar, sobrescrever buffers sensíveis. Considerar desabilitar
-  core dumps do processo Java em produção.
+### 8. Zeragem de segredos em memória — ✅ RESOLVIDO (2026-07-04)
+- **Feito:** todos os 9 endpoints que recebem certificado zeram o `certBytes` (PKCS12
+  com a chave privada criptografada) num `finally` após o uso — inclusive o batch
+  (zera após o loop). Helper `util/Sensitive.wipe(byte[]/char[])`.
+- **Nota:** `pdfBytes` não é zerado de propósito (PDF não é segredo e volta ao
+  cliente). Core dumps do processo Java em produção: ainda a avaliar (infra).
 
 ---
 
@@ -128,6 +127,50 @@
 ### 14. Temp files do batch / ZIP em memória
 - **Onde:** `signPdfPadesBatch` monta o ZIP em `ByteArrayOutputStream` (memória) —
   ok. Confirmar que nenhum caminho de batch escreve PDFs assinados em disco.
+
+---
+
+---
+
+## Achados do teste online em produção (2026-07-03)
+
+> Testes feitos contra `https://signer.procstudio.com.br/api/v1/` com certificado
+> A1 real e PDFs assinados por A1 e gov.br. Complementam a lista acima.
+
+### Confirmado em produção (já listado)
+- **CORS wildcard (#3) confirmado ao vivo:** resposta de produção traz
+  `access-control-allow-origin: *` e `access-control-allow-methods: POST` no
+  preflight. Segue valendo restringir ao domínio do front.
+- **Headers de segurança (#10) parcialmente presentes:** produção já envia
+  `X-Frame-Options: SAMEORIGIN`, `X-Content-Type-Options: nosniff`,
+  `X-XSS-Protection`. Falta `Content-Security-Policy`, `Referrer-Policy` e
+  `Cache-Control: no-store` nas respostas com PDF assinado.
+
+### 15. Erros de cliente retornam HTTP 500 (higiene de status + info disclosure)
+- **Onde:** `GlobalExceptionHandler` / fluxo dos controllers. Observado em prod:
+  - request sem multipart → `500 INTERNAL_ERROR` ("Current request is not a
+    multipart request") — deveria ser **400**.
+  - PDF corrompido/inválido → `500 SIGNING_ERROR` — deveria ser **400**.
+  - `GET` em rota `POST` → **500** — deveria ser **405**.
+  - assinatura destacada que **não bate** com o documento (adulteração!) →
+    `500 SIGNING_ERROR` "message-digest ... does not match" — deveria ser
+    **200 `valid:false`** (ou 400), não erro de servidor.
+- **Risco (segurança):** (a) resultado legítimo de "documento adulterado" é
+  mascarado como falha de servidor, dificultando detecção de fraude pelo
+  cliente; (b) 5xx com `getMessage()` cru vaza detalhe interno (liga com #6);
+  (c) tudo virando 500 afoga o monitoramento — um 5xx real (ataque/instabilidade)
+  se perde no ruído de erros que são culpa do cliente.
+- **Ação:** mapear exceções para status corretos (400/405), e tratar mismatch de
+  assinatura como **resultado de verificação** (`valid:false`, HTTP 200), não
+  exceção. Mensagens genéricas + código de correlação (ver #6).
+
+### 16. Endpoint de validação ITI dá falso "sucesso" — ✅ RESOLVIDO (2026-07-03)
+- **Era:** `/verify/iti` respondia 502 em produção; `staging=true` retornava
+  `success:true` com o HTML da homepage do ITI — falso-positivo perigoso.
+- **Correção aplicada:** endpoints `/verify/iti` e `/sign/verified` **removidos**
+  e a classe `ItiVerificador` deletada (não há API pública no ITI). Verificação
+  confiável passa a ser exclusivamente **local** (BouncyCastle): `/verify` e
+  `/verify/pdf`. `/sign/pdf/verified` mantido (verificação local). Liga com #12.
 
 ---
 

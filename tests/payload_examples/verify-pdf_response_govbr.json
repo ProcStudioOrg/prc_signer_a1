@@ -1,0 +1,51 @@
+{
+    "valid": true,
+    "totalSignatures": 1,
+    "signatures": [
+        {
+            "index": 1,
+            "signerName": "LAILA KAROLINE FERREIRA PELLIZZETTI",
+            "cpf": null,
+            "certificateType": "GOV_BR",
+            "certificateTypeLabel": "gov.br",
+            "signingTime": "Sat Apr 04 13:47:32 UTC 2026",
+            "reason": null,
+            "valid": true,
+            "integrityValid": true,
+            "certificateValid": true,
+            "coversWholeDocument": true,
+            "tsa": null,
+            "revocation": {
+                "state": "NOT_CHECKED",
+                "details": "Issuer certificate not available \u2014 chain too short",
+                "checkedAt": "Fri Jul 03 23:50:57 UTC 2026",
+                "revokedAt": null
+            },
+            "details": "Signature 1 is valid"
+        }
+    ],
+    "signature": {
+        "index": 1,
+        "signerName": "LAILA KAROLINE FERREIRA PELLIZZETTI",
+        "cpf": null,
+        "certificateType": "GOV_BR",
+        "certificateTypeLabel": "gov.br",
+        "signingTime": "Sat Apr 04 13:47:32 UTC 2026",
+        "reason": null,
+        "valid": true,
+        "integrityValid": true,
+        "certificateValid": true,
+        "coversWholeDocument": true,
+        "tsa": null,
+        "revocation": {
+            "state": "NOT_CHECKED",
+            "details": "Issuer certificate not available \u2014 chain too short",
+            "checkedAt": "Fri Jul 03 23:50:57 UTC 2026",
+            "revokedAt": null
+        },
+        "details": "Signature 1 is valid"
+    },
+    "filename": "Declaracao_Intermediacao_Gerson_assinado.pdf",
+    "details": "Signature is valid",
+    "timestamp": "2026-07-03T23:50:57.032955090Z"
+}

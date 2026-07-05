@@ -12,6 +12,8 @@ public class SignatureDetails {
 
     private int index;                       // 1-based position in the document
     private String signerName;
+    private String cpf;                      // CPF do titular (só ICP-Brasil); null p/ gov.br
+    private CertificateType certificateType; // origem do certificado: ICP-Brasil / gov.br / outro
     private Date signingTime;                // from PDF /M field — signer's clock, not trusted
     private String reason;
     private boolean valid;                   // overall: integrity AND certificate AND not revoked
@@ -26,6 +28,10 @@ public class SignatureDetails {
     public void setIndex(int index)                    { this.index = index; }
     public String getSignerName()                      { return signerName; }
     public void setSignerName(String n)                { this.signerName = n; }
+    public String getCpf()                             { return cpf; }
+    public void setCpf(String cpf)                     { this.cpf = cpf; }
+    public CertificateType getCertificateType()        { return certificateType; }
+    public void setCertificateType(CertificateType t)  { this.certificateType = t; }
     public Date getSigningTime()                       { return signingTime; }
     public void setSigningTime(Date t)                 { this.signingTime = t; }
     public String getReason()                          { return reason; }

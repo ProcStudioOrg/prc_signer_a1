@@ -1,6 +1,5 @@
 package com.example.documentsigner.api;
 
-import com.example.documentsigner.ItiVerificador.ItiVerificationResult;
 import com.example.documentsigner.api.dto.CertificateInfo;
 import com.example.documentsigner.api.dto.ErrorResponse;
 import com.example.documentsigner.api.dto.PdfSignResponse;
@@ -28,7 +27,14 @@ import java.util.zip.ZipOutputStream;
 
 @RestController
 @RequestMapping("/api/v1")
-@CrossOrigin(origins = "*")
+// CORS travado nas origens oficiais ProcStudio (SEC #3). Endpoint recebe
+// certificado + senha — não deixar wildcard. same-origin (o próprio SPA) e
+// chamadas server-to-server (backend Rails) não dependem disto.
+@CrossOrigin(origins = {
+    "https://signer.procstudio.com.br",
+    "https://hml.procstudio.com.br",
+    "https://procstudio.com.br"
+})
 public class SignerController {
 
     private final SigningService signingService;
@@ -55,8 +61,9 @@ public class SignerController {
             @RequestParam("certificate") MultipartFile certificate,
             @RequestParam("password") String password) {
 
+        byte[] certBytes = null;
         try {
-            byte[] certBytes = certificate.getBytes();
+            certBytes = certificate.getBytes();
             CertificateInfo info = signingService.getCertificateInfo(certBytes, password);
 
             if (!info.isValid()) {
@@ -69,6 +76,8 @@ public class SignerController {
         } catch (IOException e) {
             return ResponseEntity.badRequest()
                     .body(new ErrorResponse("Failed to read certificate file", "FILE_READ_ERROR"));
+        } finally {
+            com.example.documentsigner.util.Sensitive.wipe(certBytes); // zera PKCS12 (chave)
         }
     }
 
@@ -81,8 +90,9 @@ public class SignerController {
             @RequestParam("certificate") MultipartFile certificate,
             @RequestParam("password") String password) {
 
+        byte[] certBytes = null;
         try {
-            byte[] certBytes = certificate.getBytes();
+            certBytes = certificate.getBytes();
             signingService.validateCertificate(certBytes, password);
 
             return ResponseEntity.ok().body(new Object() {
@@ -94,6 +104,8 @@ public class SignerController {
         } catch (IOException e) {
             return ResponseEntity.badRequest()
                     .body(new ErrorResponse("Failed to read certificate file", "FILE_READ_ERROR"));
+        } finally {
+            com.example.documentsigner.util.Sensitive.wipe(certBytes);
         }
         // Other exceptions are handled by GlobalExceptionHandler
     }
@@ -104,9 +116,10 @@ public class SignerController {
             @RequestParam("certificate") MultipartFile certificate,
             @RequestParam("password") String password) {
 
+        byte[] certBytes = null;
         try {
             byte[] pdfBytes = document.getBytes();
-            byte[] certBytes = certificate.getBytes();
+            certBytes = certificate.getBytes();
 
             byte[] signature = signingService.signDocument(pdfBytes, certBytes, password);
 
@@ -123,6 +136,8 @@ public class SignerController {
         } catch (IOException e) {
             return ResponseEntity.badRequest()
                     .body(new ErrorResponse("Failed to read uploaded files", "FILE_READ_ERROR"));
+        } finally {
+            com.example.documentsigner.util.Sensitive.wipe(certBytes);
         }
     }
 
@@ -132,9 +147,10 @@ public class SignerController {
             @RequestParam("certificate") MultipartFile certificate,
             @RequestParam("password") String password) {
 
+        byte[] certBytes = null;
         try {
             byte[] pdfBytes = document.getBytes();
-            byte[] certBytes = certificate.getBytes();
+            certBytes = certificate.getBytes();
 
             byte[] signature = signingService.signDocument(pdfBytes, certBytes, password);
 
@@ -152,6 +168,8 @@ public class SignerController {
         } catch (IOException e) {
             return ResponseEntity.badRequest()
                     .body(new ErrorResponse("Failed to read uploaded files", "FILE_READ_ERROR"));
+        } finally {
+            com.example.documentsigner.util.Sensitive.wipe(certBytes);
         }
     }
 
@@ -161,8 +179,9 @@ public class SignerController {
             @RequestParam("certificate") MultipartFile certificate,
             @RequestParam("password") String password) {
 
+        byte[] certBytes = null;
         try {
-            byte[] certBytes = certificate.getBytes();
+            certBytes = certificate.getBytes();
             List<SignResponse> results = new ArrayList<>();
 
             for (MultipartFile document : documents) {
@@ -196,6 +215,8 @@ public class SignerController {
         } catch (IOException e) {
             return ResponseEntity.badRequest()
                     .body(new ErrorResponse("Failed to read certificate", "FILE_READ_ERROR"));
+        } finally {
+            com.example.documentsigner.util.Sensitive.wipe(certBytes);
         }
     }
 
@@ -218,98 +239,10 @@ public class SignerController {
         }
     }
 
-    /**
-     * Verify a detached signature using the official ITI Verificador (Brazilian Government).
-     * This is the external source of truth for ICP-Brasil digital signatures.
-     *
-     * Production: https://verificador.iti.gov.br
-     * Staging: https://verificador.staging.iti.br
-     */
-    @PostMapping("/verify/iti")
-    public ResponseEntity<?> verifyWithIti(
-            @RequestParam("document") MultipartFile document,
-            @RequestParam("signature") MultipartFile signature,
-            @RequestParam(value = "staging", defaultValue = "false") boolean useStaging) {
-
-        try {
-            byte[] pdfBytes = document.getBytes();
-            byte[] signatureBytes = signature.getBytes();
-
-            String docFilename = document.getOriginalFilename() != null
-                ? document.getOriginalFilename()
-                : "document.pdf";
-            String sigFilename = signature.getOriginalFilename() != null
-                ? signature.getOriginalFilename()
-                : docFilename + ".p7s";
-
-            ItiVerificationResult result = signingService.verifyWithIti(
-                signatureBytes,
-                pdfBytes,
-                sigFilename,
-                docFilename,
-                useStaging
-            );
-
-            return ResponseEntity.ok(new Object() {
-                public final boolean success = result.isSuccess();
-                public final int httpStatus = result.getHttpStatus();
-                public final String environment = useStaging ? "staging" : "production";
-                public final String itiResponse = result.getJsonResponse();
-                public final String timestamp = Instant.now().toString();
-            });
-
-        } catch (IOException e) {
-            return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
-                    .body(new ErrorResponse("Failed to connect to ITI Verificador: " + e.getMessage(), "ITI_CONNECTION_ERROR"));
-        }
-    }
-
-    /**
-     * Sign a document and immediately verify with ITI Verificador.
-     * Complete flow: sign -> validate externally.
-     */
-    @PostMapping("/sign/verified")
-    public ResponseEntity<?> signAndVerifyWithIti(
-            @RequestParam("document") MultipartFile document,
-            @RequestParam("certificate") MultipartFile certificate,
-            @RequestParam("password") String password,
-            @RequestParam(value = "staging", defaultValue = "false") boolean useStaging) {
-
-        try {
-            byte[] pdfBytes = document.getBytes();
-            byte[] certBytes = certificate.getBytes();
-            String docFilename = document.getOriginalFilename() != null
-                ? document.getOriginalFilename()
-                : "document.pdf";
-
-            SigningService.SignAndVerifyResult result = signingService.signAndVerifyWithIti(
-                pdfBytes,
-                certBytes,
-                password,
-                docFilename,
-                useStaging
-            );
-
-            ItiVerificationResult itiResult = result.getItiResult();
-
-            return ResponseEntity.ok(new Object() {
-                public final boolean success = true;
-                public final String signature = java.util.Base64.getEncoder().encodeToString(result.getSignature());
-                public final String filename = docFilename;
-                public final Object itiValidation = new Object() {
-                    public final boolean success = itiResult.isSuccess();
-                    public final int httpStatus = itiResult.getHttpStatus();
-                    public final String environment = useStaging ? "staging" : "production";
-                    public final String response = itiResult.getJsonResponse();
-                };
-                public final String timestamp = Instant.now().toString();
-            });
-
-        } catch (IOException e) {
-            return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
-                    .body(new ErrorResponse("Failed to verify with ITI: " + e.getMessage(), "ITI_CONNECTION_ERROR"));
-        }
-    }
+    // ITI (verify/iti, sign/verified) removidos: o serviço externo do governo não
+    // tem API pública de verificação — dava 502 em produção e falso-positivo em
+    // staging (retornava HTML da homepage como "sucesso"). Verificação confiável é
+    // a LOCAL: /verify (CAdES) e /verify/pdf (PAdES). Ver TODO-SECURITY.md #16.
 
     // ==================== PAdES Endpoints ====================
 
@@ -335,9 +268,10 @@ public class SignerController {
             @RequestParam(value = "timestamp", defaultValue = "false") boolean timestamp,
             @RequestParam(value = "tsaUrl", required = false) String tsaUrl) {
 
+        byte[] certBytes = null;
         try {
             byte[] pdfBytes = document.getBytes();
-            byte[] certBytes = certificate.getBytes();
+            certBytes = certificate.getBytes();
 
             // Build metadata
             SignatureMetadata metadata = SignatureMetadata.builder()
@@ -383,6 +317,8 @@ public class SignerController {
         } catch (IOException e) {
             return ResponseEntity.badRequest()
                     .body(new ErrorResponse("Failed to read uploaded files", "FILE_READ_ERROR"));
+        } finally {
+            com.example.documentsigner.util.Sensitive.wipe(certBytes);
         }
     }
 
@@ -407,9 +343,10 @@ public class SignerController {
             @RequestParam(value = "timestamp", defaultValue = "false") boolean timestamp,
             @RequestParam(value = "tsaUrl", required = false) String tsaUrl) {
 
+        byte[] certBytes = null;
         try {
             byte[] pdfBytes = document.getBytes();
-            byte[] certBytes = certificate.getBytes();
+            certBytes = certificate.getBytes();
 
             // Build metadata
             SignatureMetadata metadata = SignatureMetadata.builder()
@@ -463,6 +400,8 @@ public class SignerController {
         } catch (IOException e) {
             return ResponseEntity.badRequest()
                     .body(new ErrorResponse("Failed to read uploaded files", "FILE_READ_ERROR"));
+        } finally {
+            com.example.documentsigner.util.Sensitive.wipe(certBytes);
         }
     }
 
@@ -484,8 +423,9 @@ public class SignerController {
             @RequestParam(value = "width", defaultValue = "240") int width,
             @RequestParam(value = "height", defaultValue = "102") int height) {
 
+        byte[] certBytes = null;
         try {
-            byte[] certBytes = certificate.getBytes();
+            certBytes = certificate.getBytes();
 
             SignatureMetadata metadata = SignatureMetadata.builder()
                 .reason(reason)
@@ -551,6 +491,8 @@ public class SignerController {
         } catch (IOException e) {
             return ResponseEntity.badRequest()
                     .body(new ErrorResponse("Failed to process batch signing", "BATCH_SIGN_ERROR"));
+        } finally {
+            com.example.documentsigner.util.Sensitive.wipe(certBytes);
         }
     }
 
@@ -594,9 +536,16 @@ public class SignerController {
     private Object toSignatureDto(com.example.documentsigner.pades.dto.SignatureDetails s) {
         final com.example.documentsigner.pades.dto.TsaInfo tsaSrc = s.getTsa();
         final com.example.documentsigner.pades.dto.RevocationStatus revSrc = s.getRevocationStatus();
+        final com.example.documentsigner.pades.dto.CertificateType certType = s.getCertificateType();
+        final String certTypeName = certType != null ? certType.name() : null;
+        final String certTypeLabel = certType != null ? certType.getLabel() : null;
+        final String signerCpf = s.getCpf();
         return new Object() {
             public final int index = s.getIndex();
             public final String signerName = s.getSignerName();
+            public final String cpf = signerCpf;                       // null p/ gov.br
+            public final String certificateType = certTypeName;        // ICP_BRASIL | GOV_BR | OTHER
+            public final String certificateTypeLabel = certTypeLabel;  // rótulo legível
             public final String signingTime = s.getSigningTime() != null
                 ? s.getSigningTime().toString() : null;
             public final String reason = s.getReason();
@@ -633,19 +582,18 @@ public class SignerController {
             @RequestParam(value = "reason", required = false) String reason,
             @RequestParam(value = "location", required = false) String location) {
 
+        byte[] certBytes = null;
         try {
             byte[] pdfBytes = document.getBytes();
-            byte[] certBytes = certificate.getBytes();
+            certBytes = certificate.getBytes();
             String docFilename = document.getOriginalFilename() != null
                 ? document.getOriginalFilename()
                 : "document.pdf";
 
-            SigningService.PadesSignAndVerifyResult result = signingService.signPadesAndVerifyWithIti(
+            SigningService.PadesSignAndVerifyResult result = signingService.signPadesAndVerify(
                 pdfBytes,
                 certBytes,
-                password,
-                docFilename,
-                false
+                password
             );
 
             final PdfVerificationResult verificationResult = result.getVerificationResult();
@@ -667,7 +615,9 @@ public class SignerController {
 
         } catch (IOException e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(new ErrorResponse("Failed to sign and verify: " + e.getMessage(), "SIGN_VERIFY_ERROR"));
+                    .body(new ErrorResponse("Failed to sign and verify", "SIGN_VERIFY_ERROR"));
+        } finally {
+            com.example.documentsigner.util.Sensitive.wipe(certBytes);
         }
     }
 
