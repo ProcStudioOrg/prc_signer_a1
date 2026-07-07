@@ -1,6 +1,6 @@
 <script>
   import { onMount } from 'svelte';
-  import logo from './assets/logo.png';
+  import logo from './assets/logo.svg';
   import logoWhite from './assets/logo-white.svg';
 
   const API_BASE = '/api/v1';
@@ -467,7 +467,8 @@
     <section class="tool" class:verify-mode={mode === 'verify'} aria-label="Assinador e verificador de documentos">
       {#if view === 'form'}
         <!-- ── Switch: Assinar / Verificar ──────────────────────── -->
-        <div class="mode-switch" role="tablist" aria-label="Escolha a ação">
+        <div class="mode-switch" role="tablist" aria-label="Escolha a ação" style="--i: {mode === 'sign' ? 0 : 1}">
+          <span class="pill" aria-hidden="true"></span>
           <button type="button" role="tab" class="mode-btn" class:active={mode === 'sign'} aria-selected={mode === 'sign'} on:click={() => switchMode('sign')}>
             <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L18.5 9.5a2 2 0 0 0-2.8-2.8L5 17.2z" /><path d="M13.5 6.5l4 4" /></svg>
             Assinar
@@ -838,7 +839,6 @@
   }
   .brand-logo--dark {
     display: none;
-    height: 32px;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme='light']) .brand-logo--light {
@@ -896,7 +896,7 @@
     display: grid;
     grid-template-columns: 1.05fr 1fr;
     gap: clamp(1.5rem, 4vw, 4rem);
-    align-items: center;
+    align-items: flex-start;
     padding-block: clamp(1rem, 4vw, 3rem);
   }
 
@@ -1314,15 +1314,32 @@
 
   /* Switch Assinar / Verificar */
   .mode-switch {
-    display: flex;
-    gap: 4px;
-    padding: 4px;
-    margin-bottom: 1.4rem;
-    background: var(--surface-sunken);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
+  position: relative;
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  margin-bottom: 1.4rem;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
   }
+
+  .pill {
+    position: absolute;
+    inset: 4px auto 4px 4px;
+    width: calc(50% - 4px);
+    border-radius: calc(var(--radius-sm) - 3px);
+    background: var(--surface);
+    box-shadow: var(--shadow-sm);
+    transform: translateX(calc(var(--i) * 100%));
+    transition: transform 0.28s cubic-bezier(0.65, 0, 0.35, 1);
+    will-change: transform;
+    z-index: 0;
+  }
+
   .mode-btn {
+    position: relative;
+    z-index: 1;
     flex: 1;
     display: inline-flex;
     align-items: center;
@@ -1337,15 +1354,12 @@
     font-weight: 600;
     font-size: 0.92rem;
     cursor: pointer;
-    transition: background 0.15s, color 0.15s, box-shadow 0.15s;
+    transition: color 0.2s ease;
   }
+
   .mode-btn:hover { color: var(--text); }
-  .mode-btn.active {
-    background: var(--surface);
-    color: var(--brand-ink);
-    box-shadow: var(--shadow-sm);
-  }
-  .mode-btn.active:last-child { color: var(--govbr-ink); } /* Verificar = gov.br */
+  .mode-btn.active { color: var(--brand-ink); }
+  .mode-btn.active:last-child { color: var(--govbr-ink); }
 
   /* Resultado da verificação */
   .vresult {
