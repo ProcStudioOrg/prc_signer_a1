@@ -6,7 +6,8 @@
   const API_BASE = '/api/v1';
   const SYSTEM_URL = 'https://procstudio.com.br';
 
-  // ═══ DEBUG PANEL (TEMPORÁRIO — remover depois) ════════════════════
+  // ═══ DEBUG PANEL (oculto — trocar para true p/ inspecionar payloads) ═══
+  const DEBUG = false;
   let debugLog = [];
   let debugOpen = true;
 
@@ -25,6 +26,7 @@
   }
 
   onMount(() => {
+    if (!DEBUG) return;
     const orig = window.fetch;
     window.fetch = async (input, init = {}) => {
       const url = typeof input === 'string' ? input : (input && input.url) || '';
@@ -772,7 +774,8 @@
     </section>
   </main>
 
-  <!-- ═══ DEBUG PANEL (TEMPORÁRIO — remover depois) ═══ -->
+  <!-- ═══ DEBUG PANEL (oculto — const DEBUG no topo) ═══ -->
+  {#if DEBUG}
   <div class="dbg" class:dbg-open={debugOpen}>
     <div class="dbg-bar" on:click={() => debugOpen = !debugOpen}>
       🐞 DEBUG payloads ({debugLog.length}) — clique p/ {debugOpen ? 'ocultar' : 'mostrar'}
@@ -801,6 +804,7 @@
       </div>
     {/if}
   </div>
+  {/if}
   <!-- ═══ fim DEBUG PANEL ═══ -->
 
   <footer class="footer">
