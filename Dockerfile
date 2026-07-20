@@ -25,6 +25,8 @@ COPY frontend/package*.json ./
 RUN npm ci
 
 # Copiar código e buildar
+# VERSION (raiz do repo) vai para /VERSION — o vite.config lê ../VERSION
+COPY VERSION /VERSION
 COPY frontend/ ./
 RUN npm run build
 
@@ -50,6 +52,9 @@ RUN useradd -r -u 1001 appuser
 # Copiar JAR do backend
 COPY --from=backend-build /app/target/ProcStudioSigner2.jar app.jar
 
+# Versão da aplicação (usada pela notificação de deploy no entrypoint)
+COPY VERSION /app/VERSION
+
 # Copiar build do frontend
 COPY --from=frontend-build /frontend/dist /usr/share/nginx/html
 
@@ -58,10 +63,14 @@ COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
 COPY docker/supervisord.conf /etc/supervisord.conf
 COPY docker/entrypoint.sh /entrypoint.sh
 
-# Criar diretórios de log
-RUN mkdir -p /var/log/supervisor /var/log/nginx && \
-    chown appuser:appuser /app/app.jar && \
+# Criar diretórios de log e de dados (SQLite de usage tracking)
+RUN mkdir -p /var/log/supervisor /var/log/nginx /app/data && \
+    chown appuser:appuser /app/app.jar /app/data && \
     chmod +x /entrypoint.sh
+
+# Usage tracking: banco SQLite local. Monte /app/data como volume no host/ECS
+# para persistir o histórico entre deploys.
+ENV USAGE_DB_PATH=/app/data/usage.sqlite3
 
 # Expor portas
 EXPOSE 80 8080

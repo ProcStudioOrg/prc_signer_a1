@@ -10,6 +10,7 @@ import com.example.documentsigner.pades.dto.SignatureMetadata;
 import com.example.documentsigner.pades.dto.SignaturePosition;
 import com.example.documentsigner.pades.dto.TimestampConfig;
 import com.example.documentsigner.pades.dto.VisualSignatureConfig;
+import com.example.documentsigner.usage.UsageTracker;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -17,6 +18,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import javax.servlet.http.HttpServletRequest;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.time.Instant;
@@ -38,9 +40,11 @@ import java.util.zip.ZipOutputStream;
 public class SignerController {
 
     private final SigningService signingService;
+    private final UsageTracker usageTracker;
 
-    public SignerController(SigningService signingService) {
+    public SignerController(SigningService signingService, UsageTracker usageTracker) {
         this.signingService = signingService;
+        this.usageTracker = usageTracker;
     }
 
     @GetMapping("/health")
@@ -114,7 +118,8 @@ public class SignerController {
     public ResponseEntity<?> signDocument(
             @RequestParam("document") MultipartFile document,
             @RequestParam("certificate") MultipartFile certificate,
-            @RequestParam("password") String password) {
+            @RequestParam("password") String password,
+            HttpServletRequest request) {
 
         byte[] certBytes = null;
         try {
@@ -131,6 +136,7 @@ public class SignerController {
             headers.setContentDispositionFormData("attachment", outputFilename);
             headers.setContentLength(signature.length);
 
+            usageTracker.track("documento_baixado", UsageTracker.clientIp(request));
             return new ResponseEntity<>(signature, headers, HttpStatus.OK);
 
         } catch (IOException e) {
@@ -177,7 +183,8 @@ public class SignerController {
     public ResponseEntity<?> signBatch(
             @RequestParam("documents") MultipartFile[] documents,
             @RequestParam("certificate") MultipartFile certificate,
-            @RequestParam("password") String password) {
+            @RequestParam("password") String password,
+            HttpServletRequest request) {
 
         byte[] certBytes = null;
         try {
@@ -205,6 +212,9 @@ public class SignerController {
                 }
             }
 
+            if (results.stream().anyMatch(r -> r.success)) {
+                usageTracker.track("documento_baixado", UsageTracker.clientIp(request));
+            }
             return ResponseEntity.ok(new Object() {
                 public final boolean success = true;
                 public final List<SignResponse> documents = results;
@@ -266,7 +276,8 @@ public class SignerController {
             @RequestParam(value = "width", defaultValue = "240") int width,
             @RequestParam(value = "height", defaultValue = "102") int height,
             @RequestParam(value = "timestamp", defaultValue = "false") boolean timestamp,
-            @RequestParam(value = "tsaUrl", required = false) String tsaUrl) {
+            @RequestParam(value = "tsaUrl", required = false) String tsaUrl,
+            HttpServletRequest request) {
 
         byte[] certBytes = null;
         try {
@@ -312,6 +323,7 @@ public class SignerController {
             headers.setContentDispositionFormData("attachment", outputFilename);
             headers.setContentLength(signedPdf.length);
 
+            usageTracker.track("documento_baixado", UsageTracker.clientIp(request));
             return new ResponseEntity<>(signedPdf, headers, HttpStatus.OK);
 
         } catch (IOException e) {
@@ -421,7 +433,8 @@ public class SignerController {
             @RequestParam(value = "page", defaultValue = "0") int page,
             @RequestParam(value = "position", defaultValue = "bottom-right") String position,
             @RequestParam(value = "width", defaultValue = "240") int width,
-            @RequestParam(value = "height", defaultValue = "102") int height) {
+            @RequestParam(value = "height", defaultValue = "102") int height,
+            HttpServletRequest request) {
 
         byte[] certBytes = null;
         try {
@@ -486,6 +499,9 @@ public class SignerController {
             headers.set("X-Signed-Count", String.valueOf(successCount));
             headers.set("X-Failed-Count", String.valueOf(failCount));
 
+            if (successCount > 0) {
+                usageTracker.track("documento_baixado", UsageTracker.clientIp(request));
+            }
             return new ResponseEntity<>(zipOutput.toByteArray(), headers, HttpStatus.OK);
 
         } catch (IOException e) {

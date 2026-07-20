@@ -809,7 +809,7 @@
   <!-- ═══ fim DEBUG PANEL ═══ -->
 
   <footer class="footer">
-    <span>ProcStudio · Assinador de Documentos A1</span>
+    <span>ProcStudio · Assinador de Documentos A1 <span class="footer-version">v{__APP_VERSION__}</span></span>
     <a href={SYSTEM_URL} target="_blank" rel="noopener">procstudio.com.br</a>
   </footer>
 </div>
@@ -1576,6 +1576,12 @@
     border-top: 1px solid var(--border);
     font-size: 0.8rem;
     color: var(--text-subtle);
+  }
+  .footer-version {
+    margin-left: 0.35rem;
+    font-size: 0.72rem;
+    color: var(--text-subtle);
+    opacity: 0.8;
   }
   .footer a {
     color: var(--text-muted);
