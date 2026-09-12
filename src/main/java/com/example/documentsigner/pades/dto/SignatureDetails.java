@@ -22,6 +22,9 @@ public class SignatureDetails {
     private boolean coversWholeDocument;     // ByteRange covers the whole file
     private TsaInfo tsa;                     // null if signature is plain PAdES-B
     private RevocationStatus revocationStatus;
+    private String chainStatus;              // verified | untrusted | unverified (eixo de CONFIANÇA, PRC-1015)
+    private String chainReason;              // chain_verified | self_signed | untrusted_root | no_truststore | error
+    private String chainIssuer;              // issuer do certificado final, para exibição
     private String details;                  // free-form summary
 
     public int getIndex()                              { return index; }
@@ -48,6 +51,12 @@ public class SignatureDetails {
     public void setTsa(TsaInfo tsa)                    { this.tsa = tsa; }
     public RevocationStatus getRevocationStatus()      { return revocationStatus; }
     public void setRevocationStatus(RevocationStatus s){ this.revocationStatus = s; }
+    public String getChainStatus()                     { return chainStatus; }
+    public void setChainStatus(String s)               { this.chainStatus = s; }
+    public String getChainReason()                     { return chainReason; }
+    public void setChainReason(String s)               { this.chainReason = s; }
+    public String getChainIssuer()                     { return chainIssuer; }
+    public void setChainIssuer(String s)               { this.chainIssuer = s; }
     public String getDetails()                         { return details; }
     public void setDetails(String d)                   { this.details = d; }
 }

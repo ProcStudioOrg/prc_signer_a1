@@ -137,3 +137,26 @@ curl -s https://signer.procstudio.com.br/api/v1/health
 
 Antes disso a versão só existia no rodapé do frontend — não dava para conferir
 deploy por API nem por automação.
+
+## v1.3.0 — cadeia de certificação no `/verify/pdf` (PRC-1015, 2026-09-11)
+
+Cada item de `signatures[]` (e o alias `signature`) ganha três campos:
+
+| campo | valores | significado |
+|---|---|---|
+| `chainStatus` | `verified` · `untrusted` · `unverified` | a cadeia fecha contra o truststore ICP-Brasil? (`unverified` = não deu para conferir; nunca vira confiança) |
+| `chainReason` | `chain_verified` · `self_signed` · `untrusted_root` · `no_truststore` · `error` | motivo legível por máquina |
+| `chainIssuer` | DN | issuer do certificado final, para exibição |
+
+- **Aditivo.** `valid`, `integrityValid`, `certificateValid`, `coversWholeDocument` continuam com o mesmo
+  significado; ninguém quebra por ignorar os campos novos.
+- **gov.br** (`certificateType: GOV_BR`) sai `untrusted / untrusted_root`: o truststore embarcado só tem as
+  raízes ICP-Brasil v2–v13, não há raiz Gov-Br. É esperado e documentado; o consumidor decide.
+- **Autoassinado com `O=ICP-Brasil` no subject** agora sai `certificateType: ICP_BRASIL` + `chainStatus:
+  untrusted / self_signed`. Antes passava como `valid: true` sem nenhum sinal.
+- **A1 real** (fixtures `tests/verify/mix-*.pdf`, AC SyngularID) fecha `verified / chain_verified`.
+
+Consumidor ProcStudio (`api/app/services/customer_forms/signed_pdf_verifier.rb` e
+`envelopes/signed_pdf_verifier.rb`): assinatura `ICP_BRASIL` com `chainStatus` presente e diferente de
+`verified` é recusada; `GOV_BR` segue aceito por nome + conteúdo + integridade; campo ausente (Signer
+anterior a 1.3.0) é tolerado com aviso no log.

@@ -605,6 +605,10 @@ public class SignerController {
             public final boolean integrityValid = s.isIntegrityValid();
             public final boolean certificateValid = s.isCertificateValid();
             public final boolean coversWholeDocument = s.isCoversWholeDocument();
+            // PRC-1015 — eixo de confiança da cadeia (mesmo vocabulário do /certificate/validate).
+            public final String chainStatus = s.getChainStatus();   // verified | untrusted | unverified
+            public final String chainReason = s.getChainReason();   // chain_verified | self_signed | untrusted_root | ...
+            public final String chainIssuer = s.getChainIssuer();
             public final Object tsa = tsaSrc == null ? null : new Object() {
                 public final String timestamp = tsaSrc.getTimestamp() != null
                     ? tsaSrc.getTimestamp().toString() : null;

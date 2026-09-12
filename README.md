@@ -329,6 +329,16 @@ Uma coleção Bruno para testar a API está disponível em `/collection`.
 - ✅ Assinatura visual em PDF (PAdES)
 - ✅ Healthcheck e logs centralizados
 
+### v1.3.0
+- `POST /verify/pdf` devolve o eixo de CONFIANÇA por assinatura: `chainStatus`
+  (`verified` | `untrusted` | `unverified`), `chainReason` (`chain_verified`,
+  `self_signed`, `untrusted_root`, `no_truststore`, `error`) e `chainIssuer`.
+  Mesma verificação PKIX do `/certificate/validate`, agora sobre a cadeia
+  embarcada no CMS. `valid`/`certificateValid` NÃO mudam de significado.
+  gov.br não tem raiz embarcada e sai `untrusted/untrusted_root` — o consumidor
+  decide (o ProcStudio aceita gov.br por nome + conteúdo e exige `verified`
+  para ICP-Brasil). PRC-1015.
+
 ### v1.2.0
 - Validação de certificado antes de assinar
 - Integração com ITI Verificador
