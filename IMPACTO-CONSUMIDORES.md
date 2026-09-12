@@ -157,6 +157,10 @@ Cada item de `signatures[]` (e o alias `signature`) ganha três campos:
 - **A1 real** (fixtures `tests/verify/mix-*.pdf`, AC SyngularID) fecha `verified / chain_verified`.
 
 Consumidor ProcStudio (`api/app/services/customer_forms/signed_pdf_verifier.rb` e
-`envelopes/signed_pdf_verifier.rb`): assinatura `ICP_BRASIL` com `chainStatus` presente e diferente de
-`verified` é recusada; `GOV_BR` segue aceito por nome + conteúdo + integridade; campo ausente (Signer
-anterior a 1.3.0) é tolerado com aviso no log.
+`envelopes/signed_pdf_verifier.rb`), desde 2026-09-12: assinatura `ICP_BRASIL` com `chainStatus:
+untrusted` é recusada com **422** (status desconhecido também, fail-closed); `chainStatus: unverified`
+(`no_truststore`, `error`, `no_certificate`) é tratado como **falha do Signer, não do cliente** —
+responde **503 "tente novamente"** e loga em ERROR, nunca a mensagem que manda reassinar com outro
+certificado. `GOV_BR` segue aceito por nome + conteúdo + integridade; campo ausente (Signer anterior a
+1.3.0) é tolerado com aviso no log. Do lado de cá, a v1.3.1 loga em ERROR todo caminho que produz
+`unverified` por falha nossa, para as duas pontas contarem a mesma história.

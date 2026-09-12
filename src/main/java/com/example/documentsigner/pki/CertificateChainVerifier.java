@@ -20,6 +20,9 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 /**
  * Confere criptograficamente a cadeia de um certificado A1 contra o truststore
  * da ICP-Brasil.
@@ -51,6 +54,15 @@ public final class CertificateChainVerifier {
 
     /** Caminho do truststore. Aceita bundle PEM ou keystore JKS/PKCS12. */
     public static final String TRUSTSTORE_ENV = "ICP_BRASIL_TRUSTSTORE_PATH";
+
+    /**
+     * {@code unverified} NUNCA sai em silêncio (Bruno, 2026-09-12). É o Signer
+     * dizendo "não consegui decidir" — sem âncoras, bundle ausente, exceção no
+     * PKIX — e o consumidor responde 503 ao cliente por causa disso. Cada um
+     * desses caminhos loga em ERROR com a causa, para o operador ver a falha
+     * nossa em vez de o cliente reassinar em loop com um certificado bom.
+     */
+    private static final Logger log = LoggerFactory.getLogger(CertificateChainVerifier.class);
 
     static {
         // BouncyCastle já é dependência (bcprov/bcpkix). Registrado aqui porque
@@ -97,6 +109,10 @@ public final class CertificateChainVerifier {
             return verify(leaf, chain, truststorePath);
 
         } catch (Exception e) {
+            // PKCS12 que não abre (senha errada, arquivo corrompido) é erro do
+            // chamador, não nosso: WARN com a causa, sem stack trace.
+            log.warn("Cadeia não conferida a partir do PKCS12 (chainStatus=unverified, reason=error): {}",
+                    e.toString());
             return ChainVerification.unverified("error", issuerOf(leaf));
         }
     }
@@ -118,6 +134,9 @@ public final class CertificateChainVerifier {
                 ? effectiveAnchors()
                 : loadAnchors(truststorePath);
         if (anchors.isEmpty()) {
+            log.error("Sem âncoras ICP-Brasil (truststore={}): cadeia de '{}' sai unverified/no_truststore. "
+                    + "Falha de configuração do Signer, NÃO do certificado — o consumidor vai responder 503.",
+                    truststorePath == null ? "bundle embarcado + " + TRUSTSTORE_ENV : truststorePath, issuer);
             return ChainVerification.unverified("no_truststore", issuer);
         }
 
@@ -143,6 +162,8 @@ public final class CertificateChainVerifier {
         } catch (CertPathValidatorException e) {
             return ChainVerification.untrusted("untrusted_root", issuer);
         } catch (Exception e) {
+            log.error("Exceção na validação PKIX da cadeia de '{}': sai unverified/error "
+                    + "(falha do Signer, não do certificado)", issuer, e);
             return ChainVerification.unverified("error", issuer);
         }
     }
@@ -224,6 +245,8 @@ public final class CertificateChainVerifier {
         try (InputStream in = CertificateChainVerifier.class
                 .getResourceAsStream("/pki/icp-brasil-roots.pem")) {
             if (in == null) {
+                log.error("Bundle embarcado /pki/icp-brasil-roots.pem ausente do jar — toda cadeia ICP-Brasil "
+                        + "sairá unverified/no_truststore até corrigir o build");
                 return anchors;
             }
             java.io.ByteArrayOutputStream buf = new java.io.ByteArrayOutputStream();
@@ -239,8 +262,12 @@ public final class CertificateChainVerifier {
                     anchors.add(new TrustAnchor(cert, null));
                 }
             }
-        } catch (Exception ignored) {
-            // sem bundle, sobra o comportamento de "não sei"
+        } catch (Exception e) {
+            // sem bundle, sobra o comportamento de "não sei" — mas nunca em silêncio
+            log.error("Falha ao carregar o bundle embarcado /pki/icp-brasil-roots.pem", e);
+        }
+        if (anchors.isEmpty()) {
+            log.error("Bundle embarcado /pki/icp-brasil-roots.pem não rendeu nenhuma âncora");
         }
         return anchors;
     }
@@ -261,7 +288,11 @@ public final class CertificateChainVerifier {
      */
     static Set<TrustAnchor> loadAnchors(Path truststorePath) {
         Set<TrustAnchor> anchors = new HashSet<>();
-        if (truststorePath == null || !Files.isReadable(truststorePath)) {
+        if (truststorePath == null) {
+            return anchors;
+        }
+        if (!Files.isReadable(truststorePath)) {
+            log.error("Truststore configurado em {}={} não existe ou não é legível", TRUSTSTORE_ENV, truststorePath);
             return anchors;
         }
         try {
@@ -280,11 +311,16 @@ public final class CertificateChainVerifier {
                     anchors.add(new TrustAnchor(single, null));
                 }
             }
-        } catch (Exception ignored) {
+        } catch (Exception e) {
             // cai para o keystore abaixo
+            log.warn("Truststore {} não parseou como PEM ({}); tentando JKS/PKCS12", truststorePath, e.toString());
         }
         if (anchors.isEmpty()) {
             anchors.addAll(loadAnchorsFromKeyStore(truststorePath));
+        }
+        if (anchors.isEmpty()) {
+            log.error("Truststore {} não rendeu nenhuma âncora (nem PEM, nem JKS, nem PKCS12) — "
+                    + "toda cadeia ICP-Brasil sairá unverified/no_truststore", truststorePath);
         }
         return anchors;
     }
