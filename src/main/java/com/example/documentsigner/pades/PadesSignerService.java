@@ -717,7 +717,9 @@ public class PadesSignerService {
                 details.setCpf(extractCpf(signingCert));
             }
 
-            // Certificate validity (period only — chain checking is out of scope here)
+            // Certificate validity (period only). A confiança da cadeia é um eixo
+            // SEPARADO (PRC-857/PRC-1015): `certificateValid` continua sendo só data,
+            // e `valid` não muda de significado — quem exige cadeia lê `chainStatus`.
             boolean certValid = false;
             if (signingCert != null) {
                 try {
@@ -728,6 +730,27 @@ public class PadesSignerService {
                 }
             }
             details.setCertificateValid(certValid);
+
+            // Cadeia contra o truststore ICP-Brasil (PRC-1015). Antes o /verify/pdf
+            // não olhava a cadeia: um autoassinado com "O=ICP-Brasil" no subject
+            // passava como ICP_BRASIL válido. gov.br não tem raiz embarcada e sai
+            // como untrusted/untrusted_root — o consumidor decide o que aceitar.
+            if (signingCert != null) {
+                java.util.List<X509Certificate> embeddedChain = new java.util.ArrayList<>();
+                try {
+                    for (X509CertificateHolder holder : certStore.getMatches(null)) {
+                        embeddedChain.add(new JcaX509CertificateConverter()
+                            .setProvider("BC").getCertificate(holder));
+                    }
+                } catch (Exception ignored) {
+                    // cadeia parcial: o verificador responde unverified/untrusted, nunca verified por engano
+                }
+                com.example.documentsigner.pki.ChainVerification chain =
+                    com.example.documentsigner.pki.CertificateChainVerifier.verify(signingCert, embeddedChain);
+                details.setChainStatus(chain.getChainStatus());
+                details.setChainReason(chain.getChainReason());
+                details.setChainIssuer(chain.getChainIssuer());
+            }
 
             // OCSP revocation check (best-effort)
             RevocationStatus revStatus = validator.checkOcsp(signingCert, issuerCert);

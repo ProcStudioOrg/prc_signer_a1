@@ -18,6 +18,11 @@ public class CertificateInfo {
     private String algorithm;
     private String certificateType;       // ICP_BRASIL | GOV_BR | OTHER
     private String certificateTypeLabel;  // rótulo legível
+    // PKI — eixo de CONFIANÇA, separado do de validade (PRC-857).
+    // Ver com.example.documentsigner.pki.CertificateChainVerifier.
+    private String chainStatus;    // verified | untrusted | unverified
+    private String chainReason;    // chain_verified | self_signed | untrusted_root | no_truststore | ...
+    private String chainIssuer;
     private String error;
 
     public CertificateInfo() {
@@ -170,5 +175,29 @@ public class CertificateInfo {
             expired ? "EXPIRED" : "VALID",
             daysUntilExpiry, algorithm
         );
+    }
+
+    public String getChainStatus() {
+        return chainStatus;
+    }
+
+    public void setChainStatus(String chainStatus) {
+        this.chainStatus = chainStatus;
+    }
+
+    public String getChainReason() {
+        return chainReason;
+    }
+
+    public void setChainReason(String chainReason) {
+        this.chainReason = chainReason;
+    }
+
+    public String getChainIssuer() {
+        return chainIssuer;
+    }
+
+    public void setChainIssuer(String chainIssuer) {
+        this.chainIssuer = chainIssuer;
     }
 }

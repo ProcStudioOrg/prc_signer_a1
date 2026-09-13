@@ -211,11 +211,21 @@ public class CertificateValidator {
                 algorithm
             );
 
-            // Origem do certificado: ICP-Brasil (A1/A3) / gov.br / outro.
+            // Origem DECLARADA pelo certificado: ICP-Brasil (A1/A3) / gov.br / outro.
+            // Atenção: isto é auto-declaração (OID/subject/issuer), não prova.
             com.example.documentsigner.pades.dto.CertificateType type =
                 com.example.documentsigner.pades.CertificateTypeDetector.detect(cert);
             info.setCertificateType(type.name());
             info.setCertificateTypeLabel(type.getLabel());
+
+            // Confiança CONFERIDA: a cadeia fecha contra o truststore ICP-Brasil?
+            // Eixo separado do de validade — um certificado dentro da validade
+            // pode ser autoassinado. Autoassinado é pego sem truststore.
+            com.example.documentsigner.pki.ChainVerification chain =
+                com.example.documentsigner.pki.CertificateChainVerifier.verify(cert, chainOf(keystore, alias));
+            info.setChainStatus(chain.getChainStatus());
+            info.setChainReason(chain.getChainReason());
+            info.setChainIssuer(chain.getChainIssuer());
 
             return info;
 
@@ -228,6 +238,25 @@ public class CertificateValidator {
         } catch (Exception e) {
             return new CertificateInfo(false, "Error loading certificate: " + e.getMessage());
         }
+    }
+
+    /** Cadeia embarcada no PKCS12, para a verificação PKIX. */
+    private static java.util.List<X509Certificate> chainOf(KeyStore keystore, String alias) {
+        java.util.List<X509Certificate> out = new java.util.ArrayList<>();
+        try {
+            java.security.cert.Certificate[] raw = keystore.getCertificateChain(alias);
+            if (raw != null) {
+                for (java.security.cert.Certificate c : raw) {
+                    if (c instanceof X509Certificate) {
+                        out.add((X509Certificate) c);
+                    }
+                }
+            }
+        } catch (Exception ignored) {
+            // cadeia ausente não impede a resposta: o verificador devolve
+            // incomplete/unverified em vez de estourar o upload.
+        }
+        return out;
     }
 
     /**

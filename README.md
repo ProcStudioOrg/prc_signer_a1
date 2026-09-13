@@ -329,6 +329,26 @@ Uma coleção Bruno para testar a API está disponível em `/collection`.
 - ✅ Assinatura visual em PDF (PAdES)
 - ✅ Healthcheck e logs centralizados
 
+### v1.3.1
+- `unverified` nunca mais sai em silêncio. `CertificateChainVerifier` loga em
+  **ERROR** cada caminho que devolve `chainStatus: unverified` por falha nossa:
+  sem âncoras (`no_truststore`), bundle embarcado ausente ou vazio, truststore
+  configurado em `ICP_BRASIL_TRUSTSTORE_PATH` ilegível ou sem certificados,
+  exceção no PKIX (`error`). PKCS12 que não abre (senha errada) fica em WARN.
+  Sem mudança de contrato. Motivo: o consumidor (ProcStudio) passa a responder
+  **503 "tente novamente"** para `unverified` em vez de 422 culpando o
+  certificado do cliente — e o operador precisa ver a causa no log do Signer.
+
+### v1.3.0
+- `POST /verify/pdf` devolve o eixo de CONFIANÇA por assinatura: `chainStatus`
+  (`verified` | `untrusted` | `unverified`), `chainReason` (`chain_verified`,
+  `self_signed`, `untrusted_root`, `no_truststore`, `error`) e `chainIssuer`.
+  Mesma verificação PKIX do `/certificate/validate`, agora sobre a cadeia
+  embarcada no CMS. `valid`/`certificateValid` NÃO mudam de significado.
+  gov.br não tem raiz embarcada e sai `untrusted/untrusted_root` — o consumidor
+  decide (o ProcStudio aceita gov.br por nome + conteúdo e exige `verified`
+  para ICP-Brasil). PRC-1015.
+
 ### v1.2.0
 - Validação de certificado antes de assinar
 - Integração com ITI Verificador

@@ -52,8 +52,35 @@ public class SignerController {
         return ResponseEntity.ok().body(new Object() {
             public final String status = "ok";
             public final String service = "document-signer";
+            public final String version = APP_VERSION;
             public final String timestamp = Instant.now().toString();
         });
+    }
+
+    /**
+     * Versão do serviço, lida uma vez do arquivo VERSION que o Dockerfile copia
+     * para /app/VERSION. Existe para conferir DEPLOY pela API: sem isto, a
+     * única fonte era o rodapé do frontend, que não serve para automação nem
+     * para quem consome só a API.
+     */
+    private static final String APP_VERSION = readVersion();
+
+    private static String readVersion() {
+        for (String candidate : new String[] { "/app/VERSION", "VERSION", "../VERSION" }) {
+            try {
+                java.nio.file.Path p = java.nio.file.Paths.get(candidate);
+                if (java.nio.file.Files.isReadable(p)) {
+                    String v = new String(java.nio.file.Files.readAllBytes(p),
+                            java.nio.charset.StandardCharsets.UTF_8).trim();
+                    if (!v.isEmpty()) {
+                        return v;
+                    }
+                }
+            } catch (Exception ignored) {
+                // tenta o próximo caminho
+            }
+        }
+        return "unknown";
     }
 
     /**
@@ -99,9 +126,18 @@ public class SignerController {
             certBytes = certificate.getBytes();
             signingService.validateCertificate(certBytes, password);
 
+            // PRC-857 — a resposta passa a carregar o eixo de CONFIANÇA junto do
+            // de validade. `valid` continua significando "senha ok e dentro da
+            // validade"; quem quer saber se a cadeia fecha lê `chain_status`.
+            final com.example.documentsigner.pki.ChainVerification chain =
+                com.example.documentsigner.pki.CertificateChainVerifier.verify(certBytes, password);
+
             return ResponseEntity.ok().body(new Object() {
                 public final boolean valid = true;
                 public final String message = "Certificate is valid and not expired";
+                public final String chain_status = chain.getChainStatus();
+                public final String chain_reason = chain.getChainReason();
+                public final String chain_issuer = chain.getChainIssuer();
                 public final String timestamp = Instant.now().toString();
             });
 
@@ -569,6 +605,10 @@ public class SignerController {
             public final boolean integrityValid = s.isIntegrityValid();
             public final boolean certificateValid = s.isCertificateValid();
             public final boolean coversWholeDocument = s.isCoversWholeDocument();
+            // PRC-1015 — eixo de confiança da cadeia (mesmo vocabulário do /certificate/validate).
+            public final String chainStatus = s.getChainStatus();   // verified | untrusted | unverified
+            public final String chainReason = s.getChainReason();   // chain_verified | self_signed | untrusted_root | ...
+            public final String chainIssuer = s.getChainIssuer();
             public final Object tsa = tsaSrc == null ? null : new Object() {
                 public final String timestamp = tsaSrc.getTimestamp() != null
                     ? tsaSrc.getTimestamp().toString() : null;
