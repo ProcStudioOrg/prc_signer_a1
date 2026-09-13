@@ -459,7 +459,7 @@
         </li>
         <li>
           <svg class="chk" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6.5 9.5 17 4 11.5" /></svg>
-          Rápido: assine em poucos segundos, direto no navegador
+          Envie seus arquivos e assine em poucos passos
         </li>
       </ul>
     </section>
