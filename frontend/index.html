@@ -9,11 +9,50 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta name="theme-color" content="#0f1a3e" media="(prefers-color-scheme: dark)" />
     <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
-    <meta
-      name="description"
-      content="Assine documentos com seu certificado digital A1 (ICP-Brasil). Assinatura PAdES em PDF ou destacada .p7s, com assinatura visivel e em lote. Por ProcStudio."
-    />
-    <title>ProcStudio · Assinador de Documentos A1</title>
+    <meta name="description" content="Assine PDF com certificado digital A1 (ICP-Brasil): PAdES embutido ou arquivo destacado .p7s, assinatura visível na página que você escolher e assinatura em lote. Verifique também documentos assinados por A1 ou Gov.BR. Ferramenta gratuita do ProcStudio." />
+    <title>Assinar PDF com Certificado Digital A1 (ICP-Brasil) | ProcStudio</title>
+
+    <!-- SEO. O <h1> e o texto do hero vivem dentro do bundle Svelte, então o
+         HTML servido chegava vazio ao crawler: sem canonical, sem Open Graph
+         e sem nada legível antes do JS executar. As tags abaixo e o bloco
+         #seo-prerender no <body> corrigem isso sem trocar a arquitetura. -->
+    <link rel="canonical" href="https://signer.procstudio.com.br/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="ProcStudio" />
+    <meta property="og:locale" content="pt_BR" />
+    <meta property="og:url" content="https://signer.procstudio.com.br/" />
+    <meta property="og:title" content="Assinar PDF com Certificado Digital A1 (ICP-Brasil) | ProcStudio" />
+    <meta property="og:description" content="Assine PDF com certificado digital A1 (ICP-Brasil): PAdES embutido ou arquivo destacado .p7s, assinatura visível na página que você escolher e assinatura em lote. Verifique também documentos assinados por A1 ou Gov.BR. Ferramenta gratuita do ProcStudio." />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="Assinar PDF com Certificado Digital A1 (ICP-Brasil) | ProcStudio" />
+    <meta name="twitter:description" content="Assine PDF com certificado digital A1 (ICP-Brasil): PAdES embutido ou arquivo destacado .p7s, assinatura visível na página que você escolher e assinatura em lote. Verifique também documentos assinados por A1 ou Gov.BR. Ferramenta gratuita do ProcStudio." />
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "Assinador de Documentos A1 — ProcStudio",
+        "url": "https://signer.procstudio.com.br/",
+        "applicationCategory": "BusinessApplication",
+        "operatingSystem": "Web",
+        "inLanguage": "pt-BR",
+        "description": "Assine PDF com certificado digital A1 (ICP-Brasil): PAdES embutido ou arquivo destacado .p7s, assinatura visível na página que você escolher e assinatura em lote. Verifique também documentos assinados por A1 ou Gov.BR. Ferramenta gratuita do ProcStudio.",
+        "isAccessibleForFree": true,
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "BRL" },
+        "featureList": [
+          "Assinatura PAdES embutida em PDF",
+          "Assinatura destacada em arquivo .p7s (PKCS#7)",
+          "Assinatura visível com página e posição escolhidas",
+          "Assinatura em lote",
+          "Verificação de documentos assinados por A1 (ICP-Brasil) ou Gov.BR"
+        ],
+        "publisher": {
+          "@type": "Organization",
+          "name": "ProcStudio",
+          "url": "https://procstudio.com.br"
+        }
+      }
+    </script>
 
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -33,6 +72,23 @@
     </script>
   </head>
   <body>
+    <!-- Pré-render mínimo. Espelha o hero do App.svelte palavra por palavra e é
+         removido em main.js imediatamente antes do mount — não é conteúdo
+         diferente do que o usuário vê, é o mesmo conteúdo chegando cedo. -->
+    <div id="seo-prerender">
+      <h1>Assine e Verifique seus documentos com certificado A1 e Gov.BR.</h1>
+      <p>
+        Assine em PDF (PAdES) ou arquivo destacado (.p7s), e verifique a validade de documentos
+        assinados — por certificado A1 (ICP-Brasil) ou pelo Gov.BR. Feito para advogados que
+        querem praticidade, não burocracia técnica.
+      </p>
+      <ul>
+        <li>Padrão ICP-Brasil — PAdES e PKCS#7 (.p7s)</li>
+        <li>Assinatura visível, na página e posição que você escolher</li>
+        <li>Envie seus arquivos e assine em poucos passos</li>
+      </ul>
+      <p><a href="https://procstudio.com.br/tools">Outras ferramentas gratuitas do ProcStudio</a></p>
+    </div>
     <div id="app"></div>
     <script type="module" src="/src/main.js"></script>
   </body>

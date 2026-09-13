@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -20,10 +21,11 @@ import com.example.documentsigner.pades.dto.SignatureDetails;
 /**
  * PRC-1015 — o /verify/pdf passa a responder o eixo de CONFIANÇA por assinatura.
  *
- * <p>Fixtures reais em tests/verify/. O gov.br não tem raiz embarcada no
- * truststore ICP-Brasil, então fecha como {@code untrusted/untrusted_root}: é
- * o consumidor (Rails) que decide aceitar gov.br por nome + conteúdo. O que
- * NÃO pode acontecer é uma assinatura sair sem {@code chainStatus}.</p>
+ * <p>Fixtures reais, locais e ignoradas pelo Git em tests/verify/. Quando elas
+ * estão disponíveis, o gov.br sem raiz embarcada fecha como
+ * {@code untrusted/untrusted_root}: é o consumidor (Rails) que decide aceitar
+ * gov.br por nome + conteúdo. A cobertura autocontida e obrigatória dos três
+ * estados da cadeia vive em {@code CertificateChainVerifierTest}.</p>
  */
 class PadesVerifyChainTest {
 
@@ -31,7 +33,7 @@ class PadesVerifyChainTest {
 
     private static byte[] fixture(String name) throws Exception {
         Path p = Paths.get("tests", "verify", name);
-        assertTrue(Files.exists(p), "fixture ausente: " + p);
+        assumeTrue(Files.exists(p), "fixture real opcional ausente: " + p);
         return Files.readAllBytes(p);
     }
 
