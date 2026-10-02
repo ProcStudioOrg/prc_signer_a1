@@ -28,7 +28,7 @@ Acesse:
 O backend grava eventos de uso em SQLite e envia o resumo do dia anterior às
 00:05 no fuso `America/Sao_Paulo`. Configure a URL completa e autenticada de
 `POST https://ffd.belzinhos.com.br/api/webhooks/usage?token=<endpoint-key>` em
-`USAGE_WEBHOOK_URL`. Gere a chave de endpoint no FFD (`/settings/endpoint_keys`)
+`USAGE_WEBHOOK_URL`. Gere a chave de endpoint no FFD (`/settings`, seção API Keys de Endpoint)
 e mantenha seu valor fora do repositório. A mesma URL é usada para a notificação
 de deploy no início do container. Sem essa variável, a coleta local continua,
 mas os relatórios não são enviados.
