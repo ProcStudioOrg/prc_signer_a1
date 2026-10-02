@@ -90,10 +90,10 @@ public class UsageTrackerTest {
         // Dia 2026-07-18 em America/Sao_Paulo (UTC-3) = [2026-07-18T03:00Z, 2026-07-19T03:00Z)
         insertEvent("documento_baixado", hashA, "2026-07-18T03:00:00.000Z"); // limite inferior (incluso)
         insertEvent("documento_baixado", hashA, "2026-07-18T12:00:00.000Z");
-        insertEvent("documento_baixado", hashA, "2026-07-19T02:59:59.999Z"); // fim do dia SP (incluso)
-        insertEvent("documento_baixado", hashB, "2026-07-18T15:30:00.000Z");
-        insertEvent("documento_baixado", hashB, "2026-07-18T16:30:00.000Z");
-        insertEvent("documento_baixado", hashC, "2026-07-18T20:00:00.000Z");
+        insertEvent("documento_verificado", hashA, "2026-07-19T02:59:59.999Z"); // fim do dia SP (incluso)
+        insertEvent("assinatura_falhou", hashB, "2026-07-18T15:30:00.000Z");
+        insertEvent("verificacao_falhou", hashB, "2026-07-18T16:30:00.000Z");
+        insertEvent("documento_verificado", hashC, "2026-07-18T20:00:00.000Z");
         // Fora do dia — não devem contar:
         insertEvent("documento_baixado", hashA, "2026-07-18T02:59:59.999Z"); // ainda dia 17 em SP
         insertEvent("documento_baixado", hashB, "2026-07-19T03:00:00.000Z"); // já dia 19 em SP
@@ -103,6 +103,10 @@ public class UsageTrackerTest {
         assertEquals(day, stats.getDate());
         assertEquals(6, stats.getTotalEvents());
         assertEquals(3, stats.getUniqueUsers());
+        assertEquals(2L, stats.getByEvent().get(UsageTracker.DOCUMENTO_BAIXADO));
+        assertEquals(2L, stats.getByEvent().get(UsageTracker.DOCUMENTO_VERIFICADO));
+        assertEquals(1L, stats.getByEvent().get(UsageTracker.ASSINATURA_FALHOU));
+        assertEquals(1L, stats.getByEvent().get(UsageTracker.VERIFICACAO_FALHOU));
         // Apenas quem tem count > 1, ordenado desc
         assertEquals(2, stats.getTopRepeats().size());
         assertEquals(hashA.substring(0, 8), stats.getTopRepeats().get(0).getUser());
@@ -140,5 +144,6 @@ public class UsageTrackerTest {
         assertEquals(0, stats.getTotalEvents());
         assertEquals(0, stats.getUniqueUsers());
         assertTrue(stats.getTopRepeats().isEmpty());
+        assertEquals(0L, stats.getByEvent().get(UsageTracker.DOCUMENTO_BAIXADO));
     }
 }

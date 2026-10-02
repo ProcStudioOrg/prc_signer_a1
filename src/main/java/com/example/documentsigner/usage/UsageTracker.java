@@ -24,6 +24,8 @@ import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.LinkedHashMap;
 
 /**
  * Rastreamento de uso em SQLite local (JDBC puro, sem JPA).
@@ -36,6 +38,10 @@ import java.util.List;
 public class UsageTracker {
 
     private static final Logger log = LoggerFactory.getLogger(UsageTracker.class);
+    public static final String DOCUMENTO_BAIXADO = "documento_baixado";
+    public static final String DOCUMENTO_VERIFICADO = "documento_verificado";
+    public static final String ASSINATURA_FALHOU = "assinatura_falhou";
+    public static final String VERIFICACAO_FALHOU = "verificacao_falhou";
 
     /** Fuso de referência para o "dia" do relatório. */
     public static final ZoneId REPORT_ZONE = ZoneId.of("America/Sao_Paulo");
@@ -141,7 +147,24 @@ public class UsageTracker {
                 }
             }
 
-            return new DailyStats(date, total, unique, topRepeats);
+            Map<String, Long> byEvent = new LinkedHashMap<String, Long>();
+            byEvent.put(DOCUMENTO_BAIXADO, 0L);
+            byEvent.put(DOCUMENTO_VERIFICADO, 0L);
+            byEvent.put(ASSINATURA_FALHOU, 0L);
+            byEvent.put(VERIFICACAO_FALHOU, 0L);
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "SELECT event_type, COUNT(*) FROM usage_events "
+                            + "WHERE created_at >= ? AND created_at < ? GROUP BY event_type")) {
+                ps.setString(1, from);
+                ps.setString(2, to);
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        byEvent.put(rs.getString(1), rs.getLong(2));
+                    }
+                }
+            }
+
+            return new DailyStats(date, total, unique, topRepeats, byEvent);
         } catch (SQLException e) {
             throw new IllegalStateException("Failed to read usage stats: " + e.getMessage(), e);
         }

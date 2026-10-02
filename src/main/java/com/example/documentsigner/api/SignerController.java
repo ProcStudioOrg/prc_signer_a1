@@ -172,12 +172,16 @@ public class SignerController {
             headers.setContentDispositionFormData("attachment", outputFilename);
             headers.setContentLength(signature.length);
 
-            usageTracker.track("documento_baixado", UsageTracker.clientIp(request));
+            track(UsageTracker.DOCUMENTO_BAIXADO, request);
             return new ResponseEntity<>(signature, headers, HttpStatus.OK);
 
         } catch (IOException e) {
+            track(UsageTracker.ASSINATURA_FALHOU, request);
             return ResponseEntity.badRequest()
                     .body(new ErrorResponse("Failed to read uploaded files", "FILE_READ_ERROR"));
+        } catch (RuntimeException e) {
+            track(UsageTracker.ASSINATURA_FALHOU, request);
+            throw e;
         } finally {
             com.example.documentsigner.util.Sensitive.wipe(certBytes);
         }
@@ -187,7 +191,8 @@ public class SignerController {
     public ResponseEntity<?> signDocumentJson(
             @RequestParam("document") MultipartFile document,
             @RequestParam("certificate") MultipartFile certificate,
-            @RequestParam("password") String password) {
+            @RequestParam("password") String password,
+            HttpServletRequest request) {
 
         byte[] certBytes = null;
         try {
@@ -205,11 +210,16 @@ public class SignerController {
                     Instant.now().toString()
             );
 
+            track(UsageTracker.DOCUMENTO_BAIXADO, request);
             return ResponseEntity.ok(response);
 
         } catch (IOException e) {
+            track(UsageTracker.ASSINATURA_FALHOU, request);
             return ResponseEntity.badRequest()
                     .body(new ErrorResponse("Failed to read uploaded files", "FILE_READ_ERROR"));
+        } catch (RuntimeException e) {
+            track(UsageTracker.ASSINATURA_FALHOU, request);
+            throw e;
         } finally {
             com.example.documentsigner.util.Sensitive.wipe(certBytes);
         }
@@ -248,8 +258,9 @@ public class SignerController {
                 }
             }
 
-            if (results.stream().anyMatch(r -> r.success)) {
-                usageTracker.track("documento_baixado", UsageTracker.clientIp(request));
+            for (SignResponse result : results) {
+                track(result.success ? UsageTracker.DOCUMENTO_BAIXADO
+                        : UsageTracker.ASSINATURA_FALHOU, request);
             }
             return ResponseEntity.ok(new Object() {
                 public final boolean success = true;
@@ -259,8 +270,12 @@ public class SignerController {
             });
 
         } catch (IOException e) {
+            trackBatchOutcomes(request, 0, documents.length);
             return ResponseEntity.badRequest()
                     .body(new ErrorResponse("Failed to read certificate", "FILE_READ_ERROR"));
+        } catch (RuntimeException e) {
+            trackBatchOutcomes(request, 0, documents.length);
+            throw e;
         } finally {
             com.example.documentsigner.util.Sensitive.wipe(certBytes);
         }
@@ -269,7 +284,8 @@ public class SignerController {
     @PostMapping("/verify")
     public ResponseEntity<?> verifySignature(
             @RequestParam("document") MultipartFile document,
-            @RequestParam("signature") MultipartFile signature) {
+            @RequestParam("signature") MultipartFile signature,
+            HttpServletRequest request) {
 
         try {
             byte[] pdfBytes = document.getBytes();
@@ -277,11 +293,16 @@ public class SignerController {
 
             boolean isValid = signingService.verifySignature(signatureBytes, pdfBytes);
 
+            track(UsageTracker.DOCUMENTO_VERIFICADO, request);
             return ResponseEntity.ok(new VerifyResponse(isValid, document.getOriginalFilename()));
 
         } catch (IOException e) {
+            track(UsageTracker.VERIFICACAO_FALHOU, request);
             return ResponseEntity.badRequest()
                     .body(new ErrorResponse("Failed to read uploaded files", "FILE_READ_ERROR"));
+        } catch (RuntimeException e) {
+            track(UsageTracker.VERIFICACAO_FALHOU, request);
+            throw e;
         }
     }
 
@@ -359,12 +380,16 @@ public class SignerController {
             headers.setContentDispositionFormData("attachment", outputFilename);
             headers.setContentLength(signedPdf.length);
 
-            usageTracker.track("documento_baixado", UsageTracker.clientIp(request));
+            track(UsageTracker.DOCUMENTO_BAIXADO, request);
             return new ResponseEntity<>(signedPdf, headers, HttpStatus.OK);
 
         } catch (IOException e) {
+            track(UsageTracker.ASSINATURA_FALHOU, request);
             return ResponseEntity.badRequest()
                     .body(new ErrorResponse("Failed to read uploaded files", "FILE_READ_ERROR"));
+        } catch (RuntimeException e) {
+            track(UsageTracker.ASSINATURA_FALHOU, request);
+            throw e;
         } finally {
             com.example.documentsigner.util.Sensitive.wipe(certBytes);
         }
@@ -389,7 +414,8 @@ public class SignerController {
             @RequestParam(value = "width", defaultValue = "240") int width,
             @RequestParam(value = "height", defaultValue = "102") int height,
             @RequestParam(value = "timestamp", defaultValue = "false") boolean timestamp,
-            @RequestParam(value = "tsaUrl", required = false) String tsaUrl) {
+            @RequestParam(value = "tsaUrl", required = false) String tsaUrl,
+            HttpServletRequest request) {
 
         byte[] certBytes = null;
         try {
@@ -443,11 +469,16 @@ public class SignerController {
                 Instant.now().toString()
             );
 
+            track(UsageTracker.DOCUMENTO_BAIXADO, request);
             return ResponseEntity.ok(response);
 
         } catch (IOException e) {
+            track(UsageTracker.ASSINATURA_FALHOU, request);
             return ResponseEntity.badRequest()
                     .body(new ErrorResponse("Failed to read uploaded files", "FILE_READ_ERROR"));
+        } catch (RuntimeException e) {
+            track(UsageTracker.ASSINATURA_FALHOU, request);
+            throw e;
         } finally {
             com.example.documentsigner.util.Sensitive.wipe(certBytes);
         }
@@ -535,14 +566,16 @@ public class SignerController {
             headers.set("X-Signed-Count", String.valueOf(successCount));
             headers.set("X-Failed-Count", String.valueOf(failCount));
 
-            if (successCount > 0) {
-                usageTracker.track("documento_baixado", UsageTracker.clientIp(request));
-            }
+            trackBatchOutcomes(request, successCount, failCount);
             return new ResponseEntity<>(zipOutput.toByteArray(), headers, HttpStatus.OK);
 
         } catch (IOException e) {
+            trackBatchOutcomes(request, 0, documents.length);
             return ResponseEntity.badRequest()
                     .body(new ErrorResponse("Failed to process batch signing", "BATCH_SIGN_ERROR"));
+        } catch (RuntimeException e) {
+            trackBatchOutcomes(request, 0, documents.length);
+            throw e;
         } finally {
             com.example.documentsigner.util.Sensitive.wipe(certBytes);
         }
@@ -553,7 +586,8 @@ public class SignerController {
      */
     @PostMapping("/verify/pdf")
     public ResponseEntity<?> verifyPdfSignature(
-            @RequestParam("document") MultipartFile document) {
+            @RequestParam("document") MultipartFile document,
+            HttpServletRequest request) {
 
         try {
             byte[] pdfBytes = document.getBytes();
@@ -569,6 +603,7 @@ public class SignerController {
             // Kept as an alias for backwards-compat with the Svelte frontend and
             // existing Bruno collections. New consumers should read `signatures[]`.
             final Object primarySignature = sigs.isEmpty() ? null : sigs.get(sigs.size() - 1);
+            track(UsageTracker.DOCUMENTO_VERIFICADO, request);
             return ResponseEntity.ok(new Object() {
                 public final boolean valid = result.isValid();
                 public final int totalSignatures = result.getTotalSignatures();
@@ -580,8 +615,12 @@ public class SignerController {
             });
 
         } catch (IOException e) {
+            track(UsageTracker.VERIFICACAO_FALHOU, request);
             return ResponseEntity.badRequest()
                     .body(new ErrorResponse("Failed to read uploaded file", "FILE_READ_ERROR"));
+        } catch (RuntimeException e) {
+            track(UsageTracker.VERIFICACAO_FALHOU, request);
+            throw e;
         }
     }
 
@@ -636,7 +675,8 @@ public class SignerController {
             @RequestParam("certificate") MultipartFile certificate,
             @RequestParam("password") String password,
             @RequestParam(value = "reason", required = false) String reason,
-            @RequestParam(value = "location", required = false) String location) {
+            @RequestParam(value = "location", required = false) String location,
+            HttpServletRequest request) {
 
         byte[] certBytes = null;
         try {
@@ -655,6 +695,7 @@ public class SignerController {
             final PdfVerificationResult verificationResult = result.getVerificationResult();
             final String signedFilename = generateSignedFilename(docFilename);
 
+            track(UsageTracker.DOCUMENTO_BAIXADO, request);
             return ResponseEntity.ok(new Object() {
                 public final boolean success = true;
                 public final String signedPdfBase64 = java.util.Base64.getEncoder()
@@ -670,10 +711,31 @@ public class SignerController {
             });
 
         } catch (IOException e) {
+            track(UsageTracker.ASSINATURA_FALHOU, request);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(new ErrorResponse("Failed to sign and verify", "SIGN_VERIFY_ERROR"));
+        } catch (RuntimeException e) {
+            track(UsageTracker.ASSINATURA_FALHOU, request);
+            throw e;
         } finally {
             com.example.documentsigner.util.Sensitive.wipe(certBytes);
+        }
+    }
+
+    private void track(String eventType, HttpServletRequest request) {
+        try {
+            usageTracker.track(eventType, UsageTracker.clientIp(request));
+        } catch (Exception ignored) {
+            // Telemetry must not affect the document operation.
+        }
+    }
+
+    private void trackBatchOutcomes(HttpServletRequest request, int signed, int failed) {
+        for (int i = 0; i < signed; i++) {
+            track(UsageTracker.DOCUMENTO_BAIXADO, request);
+        }
+        for (int i = 0; i < failed; i++) {
+            track(UsageTracker.ASSINATURA_FALHOU, request);
         }
     }
 

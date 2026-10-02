@@ -3,6 +3,8 @@ package com.example.documentsigner.usage;
 import java.time.LocalDate;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.LinkedHashMap;
 
 /**
  * Estatísticas de uso de um dia (dia civil em America/Sao_Paulo).
@@ -13,14 +15,21 @@ public class DailyStats {
     private final long totalEvents;
     private final long uniqueUsers;
     private final List<TopUser> topRepeats;
+    private final Map<String, Long> byEvent;
 
     public DailyStats(LocalDate date, long totalEvents, long uniqueUsers, List<TopUser> topRepeats) {
+        this(date, totalEvents, uniqueUsers, topRepeats, Collections.<String, Long>emptyMap());
+    }
+
+    public DailyStats(LocalDate date, long totalEvents, long uniqueUsers, List<TopUser> topRepeats,
+                      Map<String, Long> byEvent) {
         this.date = date;
         this.totalEvents = totalEvents;
         this.uniqueUsers = uniqueUsers;
         this.topRepeats = topRepeats == null
                 ? Collections.<TopUser>emptyList()
                 : Collections.unmodifiableList(topRepeats);
+        this.byEvent = Collections.unmodifiableMap(new LinkedHashMap<String, Long>(byEvent));
     }
 
     public LocalDate getDate() {
@@ -37,6 +46,10 @@ public class DailyStats {
 
     public List<TopUser> getTopRepeats() {
         return topRepeats;
+    }
+
+    public Map<String, Long> getByEvent() {
+        return byEvent;
     }
 
     /**
