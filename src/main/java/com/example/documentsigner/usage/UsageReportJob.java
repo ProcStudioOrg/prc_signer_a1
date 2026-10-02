@@ -77,6 +77,10 @@ public class UsageReportJob {
             entry.put("user", user.getUser());
             entry.put("count", user.getCount());
         }
+        ObjectNode byEvent = root.putObject("by_event");
+        for (java.util.Map.Entry<String, Long> entry : stats.getByEvent().entrySet()) {
+            byEvent.put(entry.getKey(), entry.getValue());
+        }
         return objectMapper.writeValueAsString(root);
     }
 

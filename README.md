@@ -23,6 +23,36 @@ Acesse:
 - **Interface Web**: http://localhost
 - **API REST**: http://localhost/api/v1/health
 
+### Métricas de uso no FFD
+
+O backend grava eventos de uso em SQLite e envia o resumo do dia anterior às
+00:05 no fuso `America/Sao_Paulo`. Configure a URL completa e autenticada de
+`POST https://ffd.belzinhos.com.br/api/webhooks/usage?token=<endpoint-key>` em
+`USAGE_WEBHOOK_URL`. Gere a chave de endpoint no FFD (`/settings`, seção API Keys de Endpoint)
+e mantenha seu valor fora do repositório. A mesma URL é usada para a notificação
+de deploy no início do container. Sem essa variável, a coleta local continua,
+mas os relatórios não são enviados.
+
+```bash
+# FFD_USAGE_WEBHOOK_URL contém a URL acima com a chave real.
+docker run -p 80:80 \
+  -v signer-usage:/app/data \
+  -e USAGE_DB_PATH=/app/data/usage.sqlite3 \
+  -e USAGE_IP_SALT="$SIGNER_USAGE_IP_SALT" \
+  -e USAGE_WEBHOOK_URL="$FFD_USAGE_WEBHOOK_URL" \
+  procstudio-signer
+```
+
+Mantenha `/app/data` em um volume persistente entre deploys para conservar o
+SQLite e use o mesmo `USAGE_IP_SALT` para que as estimativas por IP anonimizado
+sejam consistentes. O relatório preserva `service`, `date`, `events`,
+`unique_users` e `top_repeats`, e acrescenta `by_event` com
+`documento_baixado`, `documento_verificado`, `assinatura_falhou` e
+`verificacao_falhou`. Cada documento de um lote gera um evento de resultado;
+uma assinatura inválida detectada por uma verificação concluída conta como
+`documento_verificado`. Nenhum documento, certificado, senha, CPF ou conteúdo é
+gravado na telemetria. `unique_users` é uma estimativa diária por hash de IP.
+
 ### Local - GUI Desktop
 
 ```bash
@@ -123,9 +153,10 @@ Os arquivos assinados são salvos com extensão `.p7s`.
 | `POST` | `/api/v1/sign/batch` | Assina múltiplos (P7S) |
 | `POST` | `/api/v1/sign/pdf` | Assina PDF com visual (PAdES) |
 | `POST` | `/api/v1/sign/pdf/batch` | Assina múltiplos PDFs (PAdES) |
-| `POST` | `/api/v1/sign/verified` | Assina e valida no ITI |
+| `POST` | `/api/v1/sign/pdf/json` | Assina PDF (PAdES, JSON base64) |
+| `POST` | `/api/v1/sign/pdf/verified` | Assina PDF e verifica localmente |
 | `POST` | `/api/v1/verify` | Verifica assinatura localmente |
-| `POST` | `/api/v1/verify/iti` | Verifica no ITI Verificador |
+| `POST` | `/api/v1/verify/pdf` | Verifica assinatura embutida no PDF |
 
 ### Exemplos com cURL
 
@@ -194,27 +225,24 @@ Resposta:
 
 ---
 
-## 🏛️ ITI Verificador (Validação Oficial)
+## Verificação local de assinaturas
 
-O sistema integra com o **ITI Verificador**, serviço oficial do Governo Federal para validação de assinaturas digitais ICP-Brasil.
-
-### URLs Oficiais
-- **Produção**: https://verificador.iti.gov.br
-- **Homologação**: https://verificador.staging.iti.br
-- **Portal**: https://validar.iti.gov.br
-- **Documentação**: https://validar.iti.gov.br/guia-desenvolvedor.html
+A API verifica assinaturas CAdES destacadas e PAdES embutidas no PDF localmente.
 
 ### Uso na API
 
 ```bash
-# Verificar assinatura existente no ITI
-curl -X POST http://localhost:8080/api/v1/verify/iti \
+# Verificar assinatura CAdES destacada
+curl -X POST http://localhost:8080/api/v1/verify \
   -F "document=@documento.pdf" \
-  -F "signature=@documento.pdf.p7s" \
-  -F "staging=false"
+  -F "signature=@documento.pdf.p7s"
+
+# Verificar assinatura PAdES embutida
+curl -X POST http://localhost:8080/api/v1/verify/pdf \
+  -F "document=@documento_assinado.pdf"
 
 # Assinar e verificar em uma única chamada
-curl -X POST http://localhost:8080/api/v1/sign/verified \
+curl -X POST http://localhost:8080/api/v1/sign/pdf/verified \
   -F "document=@documento.pdf" \
   -F "certificate=@certificado.pfx" \
   -F "password=sua_senha"

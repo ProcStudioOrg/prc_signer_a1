@@ -7,6 +7,8 @@ import org.junit.jupiter.api.Test;
 import java.time.LocalDate;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -18,11 +20,16 @@ public class UsageReportJobTest {
 
     @Test
     public void buildPayloadSerializesStats() throws Exception {
+        Map<String, Long> byEvent = new LinkedHashMap<>();
+        byEvent.put(UsageTracker.DOCUMENTO_BAIXADO, 5L);
+        byEvent.put(UsageTracker.DOCUMENTO_VERIFICADO, 2L);
+        byEvent.put(UsageTracker.ASSINATURA_FALHOU, 2L);
+        byEvent.put(UsageTracker.VERIFICACAO_FALHOU, 1L);
         DailyStats stats = new DailyStats(
                 LocalDate.of(2026, 7, 18), 10, 7,
                 Arrays.asList(
                         new DailyStats.TopUser("a1b2c3d4", 3),
-                        new DailyStats.TopUser("deadbeef", 2)));
+                        new DailyStats.TopUser("deadbeef", 2)), byEvent);
 
         JsonNode json = mapper.readTree(job.buildPayload(stats));
 
@@ -36,6 +43,10 @@ public class UsageReportJobTest {
         assertEquals(3, json.get("top_repeats").get(0).get("count").asLong());
         assertEquals("deadbeef", json.get("top_repeats").get(1).get("user").asText());
         assertEquals(2, json.get("top_repeats").get(1).get("count").asLong());
+        assertEquals(5, json.get("by_event").get("documento_baixado").asLong());
+        assertEquals(2, json.get("by_event").get("documento_verificado").asLong());
+        assertEquals(2, json.get("by_event").get("assinatura_falhou").asLong());
+        assertEquals(1, json.get("by_event").get("verificacao_falhou").asLong());
     }
 
     @Test
@@ -51,5 +62,6 @@ public class UsageReportJobTest {
         assertEquals(0, json.get("unique_users").asLong());
         assertTrue(json.get("top_repeats").isArray());
         assertEquals(0, json.get("top_repeats").size());
+        assertTrue(json.get("by_event").isObject());
     }
 }
