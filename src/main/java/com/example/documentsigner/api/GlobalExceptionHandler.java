@@ -4,6 +4,7 @@ import com.example.documentsigner.api.dto.ErrorResponse;
 import com.example.documentsigner.exception.ExpiredCertificateException;
 import com.example.documentsigner.exception.InvalidCertificateException;
 import com.example.documentsigner.exception.InvalidDocumentException;
+import com.example.documentsigner.exception.InvalidSignaturePlacementException;
 import com.example.documentsigner.exception.InvalidPasswordException;
 import com.example.documentsigner.exception.SigningException;
 import org.slf4j.Logger;
@@ -15,6 +16,7 @@ import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.multipart.MultipartException;
 import org.springframework.web.multipart.support.MissingServletRequestPartException;
@@ -52,6 +54,22 @@ public class GlobalExceptionHandler {
         return ResponseEntity
                 .status(HttpStatus.BAD_REQUEST)
                 .body(new ErrorResponse(e.getMessage(), e.getErrorCode()));
+    }
+
+    /** Posição da assinatura visível que não cabe no documento → 400 com o motivo. */
+    @ExceptionHandler(InvalidSignaturePlacementException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidPlacement(InvalidSignaturePlacementException e) {
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(new ErrorResponse(e.getMessage(), e.getErrorCode()));
+    }
+
+    /** Parâmetro com tipo errado (ex.: x=abc, page=1.5) → 400, não 500. */
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ErrorResponse> handleTypeMismatch(MethodArgumentTypeMismatchException e) {
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(new ErrorResponse("Invalid value for parameter: " + e.getName(), "BAD_REQUEST"));
     }
 
     @ExceptionHandler(MaxUploadSizeExceededException.class)

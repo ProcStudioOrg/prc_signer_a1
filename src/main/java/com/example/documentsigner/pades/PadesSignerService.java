@@ -4,12 +4,12 @@ import com.example.documentsigner.exception.ExpiredCertificateException;
 import com.example.documentsigner.exception.InvalidCertificateException;
 import com.example.documentsigner.exception.InvalidDocumentException;
 import com.example.documentsigner.exception.InvalidPasswordException;
+import com.example.documentsigner.exception.InvalidSignaturePlacementException;
 import com.example.documentsigner.exception.SigningException;
 import com.example.documentsigner.pades.dto.PdfVerificationResult;
 import com.example.documentsigner.pades.dto.RevocationStatus;
 import com.example.documentsigner.pades.dto.SignatureDetails;
 import com.example.documentsigner.pades.dto.SignatureMetadata;
-import com.example.documentsigner.pades.dto.SignaturePosition;
 import com.example.documentsigner.pades.dto.SignerDisplayInfo;
 import com.example.documentsigner.pades.dto.TimestampConfig;
 import com.example.documentsigner.pades.dto.TsaInfo;
@@ -31,6 +31,7 @@ import org.apache.pdfbox.pdmodel.interactive.annotation.PDAppearanceDictionary;
 import org.apache.pdfbox.pdmodel.interactive.annotation.PDAppearanceStream;
 import org.apache.pdfbox.pdmodel.interactive.annotation.PDBorderStyleDictionary;
 import org.apache.pdfbox.pdmodel.PDAppearanceContentStream;
+import org.apache.pdfbox.util.Matrix;
 import org.apache.pdfbox.pdmodel.interactive.digitalsignature.PDSignature;
 import org.apache.pdfbox.pdmodel.interactive.digitalsignature.SignatureOptions;
 import org.apache.pdfbox.pdmodel.interactive.form.PDAcroForm;
@@ -47,6 +48,7 @@ import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.bouncycastle.util.Store;
 
 import javax.imageio.ImageIO;
+import java.awt.geom.AffineTransform;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -225,17 +227,11 @@ public class PadesSignerService {
             PDDocument document = PDDocument.load(pdfBytes);
 
             try {
-                // Resolve target page. A non-positive page value is a sentinel
-                // meaning "last page" — handy as a sane default for signatures.
-                int totalPages = document.getNumberOfPages();
-                int pageIndex = visualConfig.getPage() <= 0
-                    ? totalPages - 1
-                    : visualConfig.getPage() - 1;
-                if (pageIndex < 0 || pageIndex >= totalPages) {
-                    throw new InvalidDocumentException(
-                        "Invalid page number: " + visualConfig.getPage() +
-                        ". Document has " + totalPages + " pages.");
-                }
+                // Página, caixa e rotação saem de um lugar só (contrato de
+                // coordenadas documentado em SignaturePlacement). Pedido que
+                // não cabe no documento é recusado aqui, antes de assinar.
+                SignaturePlacement placement = SignaturePlacement.resolve(document, visualConfig);
+                int pageIndex = placement.getPageIndex();
 
                 // Create signature dictionary
                 PDSignature signature = createSignature(signingCert, metadata);
@@ -247,13 +243,7 @@ public class PadesSignerService {
                 PadesSignatureInterface signatureInterface =
                     new PadesSignatureInterface(privateKey, certificateChain, tsaService);
 
-                // Calculate signature rectangle position
                 PDPage page = document.getPage(pageIndex);
-                PDRectangle pageRect = page.getMediaBox();
-                float width = visualConfig.getWidth();
-                float height = visualConfig.getHeight();
-                PDRectangle signatureRect = calculateSignatureRectangle(
-                    pageRect, visualConfig, width, height);
 
                 // Create signature options with proper rectangle
                 SignatureOptions signatureOptions = new SignatureOptions();
@@ -263,13 +253,13 @@ public class PadesSignerService {
 
                 // Create the visual signature template
                 byte[] visualTemplate = createVisualSignatureTemplate(
-                    document, pageIndex, signatureRect, signerInfo, metadata);
+                    document, placement, signerInfo, metadata);
                 signatureOptions.setVisualSignature(new ByteArrayInputStream(visualTemplate));
 
                 // Add a clickable link annotation over the ProcStudio logo+wordmark.
                 // Must be added to the actual document page BEFORE addSignature, so the
                 // incremental save covers it within the signed byte range.
-                addBrandLinkAnnotation(page, signatureRect);
+                addBrandLinkAnnotation(page, placement);
 
                 // Add signature to document
                 document.addSignature(signature, signatureInterface, signatureOptions);
@@ -284,7 +274,8 @@ public class PadesSignerService {
                 document.close();
             }
 
-        } catch (InvalidDocumentException | InvalidCertificateException |
+        } catch (InvalidDocumentException | InvalidSignaturePlacementException |
+                 InvalidCertificateException |
                  InvalidPasswordException | ExpiredCertificateException e) {
             throw e;
         } catch (Exception e) {
@@ -292,44 +283,12 @@ public class PadesSignerService {
         }
     }
 
-    private PDRectangle calculateSignatureRectangle(PDRectangle pageRect,
-                                                     VisualSignatureConfig config,
-                                                     float width, float height) {
-        float x, y;
-        float margin = 20;
-
-        if (config.getPosition() == SignaturePosition.CUSTOM &&
-            config.getX() != null && config.getY() != null) {
-            x = config.getX();
-            y = config.getY();
-        } else {
-            switch (config.getPosition()) {
-                case TOP_LEFT:
-                    x = margin;
-                    y = pageRect.getHeight() - height - margin;
-                    break;
-                case TOP_RIGHT:
-                    x = pageRect.getWidth() - width - margin;
-                    y = pageRect.getHeight() - height - margin;
-                    break;
-                case BOTTOM_LEFT:
-                    x = margin;
-                    y = margin;
-                    break;
-                case BOTTOM_RIGHT:
-                default:
-                    x = pageRect.getWidth() - width - margin;
-                    y = margin;
-                    break;
-            }
-        }
-        return new PDRectangle(x, y, width, height);
-    }
-
-    private byte[] createVisualSignatureTemplate(PDDocument srcDoc, int pageIndex,
-                                                  PDRectangle signatureRect,
+    private byte[] createVisualSignatureTemplate(PDDocument srcDoc,
+                                                  SignaturePlacement placement,
                                                   SignerDisplayInfo signerInfo,
                                                   SignatureMetadata metadata) throws IOException {
+        int pageIndex = placement.getPageIndex();
+        PDRectangle signatureRect = placement.getWidgetRectangle();
         // Create a new document for the template
         PDDocument template = new PDDocument();
 
@@ -359,13 +318,21 @@ public class PadesSignerService {
             PDAppearanceStream appearanceStream = new PDAppearanceStream(template);
             PDResources appearanceResources = new PDResources();
             appearanceStream.setResources(appearanceResources);
-            appearanceStream.setBBox(new PDRectangle(signatureRect.getWidth(), signatureRect.getHeight()));
-
-            float w = signatureRect.getWidth();
-            float h = signatureRect.getHeight();
+            // O desenho é feito no espaço da página VISÍVEL (largura × altura
+            // como o leitor vê). Em página com /Rotate, a Matrix gira o carimbo
+            // de volta para ele sair em pé; a BBox girada tem exatamente o
+            // tamanho do /Rect (ISO 32000-1, algoritmo 8.1), então não há
+            // distorção.
+            float w = placement.getWidth();
+            float h = placement.getHeight();
+            appearanceStream.setBBox(new PDRectangle(w, h));
+            if (placement.getRotation() != 0) {
+                appearanceStream.setMatrix(
+                    AffineTransform.getQuadrantRotateInstance(placement.getRotation() / 90));
+            }
 
             drawSignatureAppearance(appearanceStream, appearanceResources, template,
-                                    w, h, signerInfo, metadata);
+                                    w, h, placement.getScale(), signerInfo, metadata);
 
             PDAppearanceDictionary appearance = new PDAppearanceDictionary();
             appearance.getCOSObject().setDirect(true);
@@ -401,9 +368,15 @@ public class PadesSignerService {
     private void drawSignatureAppearance(PDAppearanceStream appearanceStream,
                                          PDResources resources,
                                          PDDocument template,
-                                         float w, float h,
+                                         float boxW, float boxH, float scale,
                                          SignerDisplayInfo signerInfo,
                                          SignatureMetadata metadata) throws IOException {
+
+        // O layout abaixo é o de projeto (240 × 102 pt). Caixa maior ou menor
+        // escala o desenho inteiro por um fator único, ancorado no topo
+        // esquerdo; a borda acompanha a caixa pedida.
+        final float w = SignaturePlacement.BASE_WIDTH;
+        final float h = SignaturePlacement.BASE_HEIGHT;
 
         // Palette
         final float[] textPrimary  = {0.15f, 0.18f, 0.22f};   // near-black slate
@@ -427,8 +400,10 @@ public class PadesSignerService {
             // ─── Hairline border ───
             cs.setStrokingColor(hairline[0], hairline[1], hairline[2]);
             cs.setLineWidth(0.5f);
-            cs.addRect(0.5f, 0.5f, w - 1f, h - 1f);
+            cs.addRect(0.5f, 0.5f, boxW - 1f, boxH - 1f);
             cs.stroke();
+
+            cs.transform(new Matrix(scale, 0, 0, scale, 0, boxH - h * scale));
 
             // ─── Title ───
             cs.setNonStrokingColor(accent[0], accent[1], accent[2]);
@@ -514,7 +489,7 @@ public class PadesSignerService {
      * Adds a transparent clickable link annotation over the brand area
      * (logo + "ProcStudio" wordmark) on the actual signed page.
      */
-    private void addBrandLinkAnnotation(PDPage page, PDRectangle signatureRect) throws IOException {
+    private void addBrandLinkAnnotation(PDPage page, SignaturePlacement placement) throws IOException {
         // Brand strip drawn at relative (pad=10, y=8): logo 18x18 + gap 4 + "ProcStudio" ~48pt
         final float relX = 10f;
         final float relY = 8f;
@@ -522,11 +497,15 @@ public class PadesSignerService {
         final float linkH = 18f;
 
         PDAnnotationLink link = new PDAnnotationLink();
-        PDRectangle linkRect = new PDRectangle(
-            signatureRect.getLowerLeftX() + relX,
-            signatureRect.getLowerLeftY() + relY,
-            linkW,
-            linkH
+        // Mesma conta do desenho: escala única, ancorada no topo esquerdo da caixa.
+        float scale = placement.getScale();
+        float contentBottom = placement.getY() + placement.getHeight()
+            - SignaturePlacement.BASE_HEIGHT * scale;
+        PDRectangle linkRect = placement.toUserSpace(
+            placement.getX() + relX * scale,
+            contentBottom + relY * scale,
+            linkW * scale,
+            linkH * scale
         );
         link.setRectangle(linkRect);
 

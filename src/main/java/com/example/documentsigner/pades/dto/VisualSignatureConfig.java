@@ -7,16 +7,16 @@ public class VisualSignatureConfig {
     private boolean enabled;
     private int page = 1;
     private SignaturePosition position = SignaturePosition.BOTTOM_RIGHT;
-    private Integer x;
-    private Integer y;
-    private int width = 240;
-    private int height = 102;
+    private Float x;
+    private Float y;
+    private float width = 240;
+    private float height = 102;
 
     public VisualSignatureConfig() {
     }
 
     public VisualSignatureConfig(boolean enabled, int page, SignaturePosition position,
-                                  Integer x, Integer y, int width, int height) {
+                                  Float x, Float y, float width, float height) {
         this.enabled = enabled;
         this.page = page;
         this.position = position;
@@ -50,35 +50,35 @@ public class VisualSignatureConfig {
         this.position = position;
     }
 
-    public Integer getX() {
+    public Float getX() {
         return x;
     }
 
-    public void setX(Integer x) {
+    public void setX(Float x) {
         this.x = x;
     }
 
-    public Integer getY() {
+    public Float getY() {
         return y;
     }
 
-    public void setY(Integer y) {
+    public void setY(Float y) {
         this.y = y;
     }
 
-    public int getWidth() {
+    public float getWidth() {
         return width;
     }
 
-    public void setWidth(int width) {
+    public void setWidth(float width) {
         this.width = width;
     }
 
-    public int getHeight() {
+    public float getHeight() {
         return height;
     }
 
-    public void setHeight(int height) {
+    public void setHeight(float height) {
         this.height = height;
     }
 
@@ -90,10 +90,10 @@ public class VisualSignatureConfig {
         private boolean enabled = false;
         private int page = 1;
         private SignaturePosition position = SignaturePosition.BOTTOM_RIGHT;
-        private Integer x;
-        private Integer y;
-        private int width = 240;
-        private int height = 102;
+        private Float x;
+        private Float y;
+        private float width = 240;
+        private float height = 102;
 
         public Builder enabled(boolean enabled) {
             this.enabled = enabled;
@@ -110,22 +110,22 @@ public class VisualSignatureConfig {
             return this;
         }
 
-        public Builder x(Integer x) {
+        public Builder x(Float x) {
             this.x = x;
             return this;
         }
 
-        public Builder y(Integer y) {
+        public Builder y(Float y) {
             this.y = y;
             return this;
         }
 
-        public Builder width(int width) {
+        public Builder width(float width) {
             this.width = width;
             return this;
         }
 
-        public Builder height(int height) {
+        public Builder height(float height) {
             this.height = height;
             return this;
         }

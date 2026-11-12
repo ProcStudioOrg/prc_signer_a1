@@ -7,7 +7,10 @@ import com.example.documentsigner.api.dto.SignResponse;
 import com.example.documentsigner.api.dto.VerifyResponse;
 import com.example.documentsigner.pades.dto.PdfVerificationResult;
 import com.example.documentsigner.pades.dto.SignatureMetadata;
+import com.example.documentsigner.exception.InvalidSignaturePlacementException;
 import com.example.documentsigner.pades.dto.SignaturePosition;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.example.documentsigner.pades.dto.TimestampConfig;
 import com.example.documentsigner.pades.dto.VisualSignatureConfig;
 import com.example.documentsigner.usage.UsageTracker;
@@ -38,6 +41,8 @@ import java.util.zip.ZipOutputStream;
     "https://procstudio.com.br"
 })
 public class SignerController {
+
+    private static final ObjectMapper PLACEMENTS_MAPPER = new ObjectMapper();
 
     private final SigningService signingService;
     private final UsageTracker usageTracker;
@@ -307,10 +312,10 @@ public class SignerController {
             @RequestParam(value = "visible", defaultValue = "false") boolean visible,
             @RequestParam(value = "page", defaultValue = "0") int page,
             @RequestParam(value = "position", defaultValue = "bottom-right") String position,
-            @RequestParam(value = "x", required = false) Integer x,
-            @RequestParam(value = "y", required = false) Integer y,
-            @RequestParam(value = "width", defaultValue = "240") int width,
-            @RequestParam(value = "height", defaultValue = "102") int height,
+            @RequestParam(value = "x", required = false) Float x,
+            @RequestParam(value = "y", required = false) Float y,
+            @RequestParam(value = "width", defaultValue = "240") float width,
+            @RequestParam(value = "height", defaultValue = "102") float height,
             @RequestParam(value = "timestamp", defaultValue = "false") boolean timestamp,
             @RequestParam(value = "tsaUrl", required = false) String tsaUrl,
             HttpServletRequest request) {
@@ -334,15 +339,8 @@ public class SignerController {
 
             if (visible) {
                 // Build visual config
-                VisualSignatureConfig visualConfig = VisualSignatureConfig.builder()
-                    .enabled(true)
-                    .page(page)
-                    .position(parsePosition(position))
-                    .x(x)
-                    .y(y)
-                    .width(width)
-                    .height(height)
-                    .build();
+                VisualSignatureConfig visualConfig =
+                    buildVisualConfig(page, position, x, y, width, height);
 
                 signedPdf = signingService.signDocumentPadesVisible(
                     pdfBytes, certBytes, password, metadata, visualConfig, tsConfig);
@@ -384,10 +382,10 @@ public class SignerController {
             @RequestParam(value = "visible", defaultValue = "false") boolean visible,
             @RequestParam(value = "page", defaultValue = "0") int page,
             @RequestParam(value = "position", defaultValue = "bottom-right") String position,
-            @RequestParam(value = "x", required = false) Integer x,
-            @RequestParam(value = "y", required = false) Integer y,
-            @RequestParam(value = "width", defaultValue = "240") int width,
-            @RequestParam(value = "height", defaultValue = "102") int height,
+            @RequestParam(value = "x", required = false) Float x,
+            @RequestParam(value = "y", required = false) Float y,
+            @RequestParam(value = "width", defaultValue = "240") float width,
+            @RequestParam(value = "height", defaultValue = "102") float height,
             @RequestParam(value = "timestamp", defaultValue = "false") boolean timestamp,
             @RequestParam(value = "tsaUrl", required = false) String tsaUrl) {
 
@@ -408,15 +406,8 @@ public class SignerController {
             byte[] signedPdf;
 
             if (visible) {
-                VisualSignatureConfig visualConfig = VisualSignatureConfig.builder()
-                    .enabled(true)
-                    .page(page)
-                    .position(parsePosition(position))
-                    .x(x)
-                    .y(y)
-                    .width(width)
-                    .height(height)
-                    .build();
+                VisualSignatureConfig visualConfig =
+                    buildVisualConfig(page, position, x, y, width, height);
 
                 signedPdf = signingService.signDocumentPadesVisible(
                     pdfBytes, certBytes, password, metadata, visualConfig, tsConfig);
@@ -468,8 +459,11 @@ public class SignerController {
             @RequestParam(value = "visible", defaultValue = "false") boolean visible,
             @RequestParam(value = "page", defaultValue = "0") int page,
             @RequestParam(value = "position", defaultValue = "bottom-right") String position,
-            @RequestParam(value = "width", defaultValue = "240") int width,
-            @RequestParam(value = "height", defaultValue = "102") int height,
+            @RequestParam(value = "x", required = false) Float x,
+            @RequestParam(value = "y", required = false) Float y,
+            @RequestParam(value = "width", defaultValue = "240") float width,
+            @RequestParam(value = "height", defaultValue = "102") float height,
+            @RequestParam(value = "placements", required = false) String placements,
             HttpServletRequest request) {
 
         byte[] certBytes = null;
@@ -482,16 +476,14 @@ public class SignerController {
                 .contactInfo(contact)
                 .build();
 
-            VisualSignatureConfig visualConfig = null;
-            if (visible) {
-                visualConfig = VisualSignatureConfig.builder()
-                    .enabled(true)
-                    .page(page)
-                    .position(parsePosition(position))
-                    .width(width)
-                    .height(height)
-                    .build();
-            }
+            // Posição: os parâmetros da requisição valem para todos os arquivos;
+            // `placements` (JSON, um item por arquivo, na mesma ordem) troca a
+            // posição de cada um. Item null = usa a da requisição.
+            VisualSignatureConfig defaultVisual = visible
+                ? buildVisualConfig(page, position, x, y, width, height) : null;
+            List<VisualSignatureConfig> perFile = visible
+                ? parsePlacements(placements, documents.length, defaultVisual)
+                : null;
 
             ByteArrayOutputStream zipOutput = new ByteArrayOutputStream();
             ZipOutputStream zipStream = new ZipOutputStream(zipOutput);
@@ -499,7 +491,9 @@ public class SignerController {
             int successCount = 0;
             int failCount = 0;
 
-            for (MultipartFile document : documents) {
+            for (int i = 0; i < documents.length; i++) {
+                MultipartFile document = documents[i];
+                VisualSignatureConfig visualConfig = perFile != null ? perFile.get(i) : null;
                 try {
                     byte[] pdfBytes = document.getBytes();
                     byte[] signedPdf;
@@ -679,11 +673,93 @@ public class SignerController {
 
     // ==================== Helper Methods ====================
 
+    private VisualSignatureConfig buildVisualConfig(int page, String position, Float x, Float y,
+                                                    float width, float height) {
+        return VisualSignatureConfig.builder()
+            .enabled(true)
+            .page(page)
+            .position(parsePosition(position))
+            .x(x)
+            .y(y)
+            .width(width)
+            .height(height)
+            .build();
+    }
+
+    /**
+     * Lê o `placements` do lote: array JSON com um item por arquivo, na ordem
+     * dos `documents`. Cada item é null (usa a posição da requisição) ou um
+     * objeto {page, x, y, width, height, position} — campo ausente herda o da
+     * requisição. JSON inválido ou tamanho diferente do número de arquivos
+     * recusa o lote inteiro com 400, antes de assinar qualquer coisa.
+     */
+    private List<VisualSignatureConfig> parsePlacements(String json, int documentCount,
+                                                        VisualSignatureConfig fallback) {
+        List<VisualSignatureConfig> configs = new ArrayList<>();
+        if (json == null || json.trim().isEmpty()) {
+            for (int i = 0; i < documentCount; i++) {
+                configs.add(fallback);
+            }
+            return configs;
+        }
+
+        JsonNode root;
+        try {
+            root = PLACEMENTS_MAPPER.readTree(json);
+        } catch (IOException e) {
+            throw InvalidSignaturePlacementException.placement("placements is not valid JSON.");
+        }
+        if (root == null || !root.isArray() || root.size() != documentCount) {
+            throw InvalidSignaturePlacementException.placement(
+                "placements must be a JSON array with one item per document ("
+                + documentCount + " expected).");
+        }
+
+        for (JsonNode item : root) {
+            if (item == null || item.isNull()) {
+                configs.add(fallback);
+                continue;
+            }
+            if (!item.isObject()) {
+                throw InvalidSignaturePlacementException.placement(
+                    "Each placements item must be null or an object.");
+            }
+            boolean hasCoordinates = item.hasNonNull("x") || item.hasNonNull("y");
+            configs.add(VisualSignatureConfig.builder()
+                .enabled(true)
+                .page(item.hasNonNull("page")
+                    ? (int) placementNumber(item, "page") : fallback.getPage())
+                .position(item.hasNonNull("position")
+                    ? parsePosition(item.get("position").asText()) : fallback.getPosition())
+                .x(hasCoordinates ? placementCoordinate(item, "x") : fallback.getX())
+                .y(hasCoordinates ? placementCoordinate(item, "y") : fallback.getY())
+                .width(item.hasNonNull("width")
+                    ? placementNumber(item, "width") : fallback.getWidth())
+                .height(item.hasNonNull("height")
+                    ? placementNumber(item, "height") : fallback.getHeight())
+                .build());
+        }
+        return configs;
+    }
+
+    private Float placementCoordinate(JsonNode item, String field) {
+        return item.hasNonNull(field) ? placementNumber(item, field) : null;
+    }
+
+    private float placementNumber(JsonNode item, String field) {
+        JsonNode value = item.get(field);
+        if (!value.isNumber()) {
+            throw InvalidSignaturePlacementException.placement(
+                "placements: \"" + field + "\" must be a number.");
+        }
+        return value.floatValue();
+    }
+
     private SignaturePosition parsePosition(String position) {
         if (position == null) {
             return SignaturePosition.BOTTOM_RIGHT;
         }
-        switch (position.toLowerCase().replace("-", "_")) {
+        switch (position.trim().toLowerCase().replace("-", "_")) {
             case "bottom_left":
             case "bottomleft":
                 return SignaturePosition.BOTTOM_LEFT;
@@ -697,8 +773,12 @@ public class SignerController {
                 return SignaturePosition.CUSTOM;
             case "bottom_right":
             case "bottomright":
-            default:
+            case "":
                 return SignaturePosition.BOTTOM_RIGHT;
+            default:
+                throw InvalidSignaturePlacementException.placement(
+                    "Unknown position. Use bottom-right, bottom-left, top-right, top-left "
+                    + "or custom (with x and y).");
         }
     }
 
