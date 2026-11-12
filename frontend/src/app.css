@@ -47,6 +47,12 @@
   --shadow-md: 0 10px 30px -12px rgba(15, 26, 62, 0.22);
   --shadow-lg: 0 30px 60px -24px rgba(15, 26, 62, 0.32);
 
+  /* ── Papel: a prévia do PDF é sempre folha branca, nos dois temas ── */
+  --paper: #ffffff;
+  --paper-ink: #262e38;
+  --paper-muted: #6b7280;
+  --paper-accent: #0d408c;
+
   --radius: 14px;
   --radius-sm: 9px;
 

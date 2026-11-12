@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import logo from './assets/logo.svg';
   import logoWhite from './assets/logo-white.svg';
+  import SignaturePlacer from './lib/SignaturePlacer.svelte';
 
   const API_BASE = '/api/v1';
   const SYSTEM_URL = 'https://procstudio.com.br';
@@ -73,6 +74,9 @@
   let customPage = 1;
   let signaturePosition = 'bottom-right';
   let documentsToSign = [];
+  // Posição ajustada na prévia (null = usa página + canto do passo 2). A página
+  // aceita um documento por vez, então há uma posição só.
+  let manualPlacement = null;
   let statusMessage = '';
   let statusType = 'info'; // 'info', 'success', 'error'
   let isLoading = false;
@@ -190,6 +194,18 @@
 
   function handleDocumentUpload(event) {
     documentsToSign = Array.from(event.target.files);
+    manualPlacement = null;
+  }
+
+  // Erros de posição chegam da API em inglês, com código estável; aqui viram
+  // português. Os demais continuam com a mensagem genérica de cada fluxo.
+  const PLACEMENT_ERRORS = {
+    INVALID_SIGNATURE_PAGE: 'A página escolhida para a assinatura não existe neste documento.',
+    INVALID_SIGNATURE_PLACEMENT:
+      'A assinatura não cabe na posição escolhida. Ajuste a posição e tente de novo.',
+  };
+  function signErrorMessage(body, fallback) {
+    return PLACEMENT_ERRORS[body?.code] || fallback;
   }
 
   function setStatus(message, type = 'info') {
@@ -205,6 +221,7 @@
 
   function signAnother() {
     documentsToSign = [];
+    manualPlacement = null;
     doneSummary = '';
     statusMessage = '';
     view = 'form';
@@ -298,15 +315,19 @@
       formData.append('password', certificatePassword);
       formData.append('visible', includeVisualSignature);
       if (includeVisualSignature) {
-        formData.append('page', page);
-        formData.append('position', signaturePosition);
+        if (manualPlacement) {
+          for (const key of ['page', 'x', 'y', 'width', 'height']) formData.append(key, manualPlacement[key]);
+        } else {
+          formData.append('page', page);
+          formData.append('position', signaturePosition);
+        }
       }
 
       const res = await fetch(`${API_BASE}/sign/pdf`, { method: 'POST', body: formData });
 
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || 'Erro ao assinar PDF');
+        const err = await res.json().catch(() => null);
+        throw new Error(signErrorMessage(err, 'Não foi possível assinar o PDF.'));
       }
 
       const blob = await res.blob();
@@ -328,8 +349,8 @@
       const res = await fetch(`${API_BASE}/sign/pdf/batch`, { method: 'POST', body: formData });
 
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || 'Erro ao assinar PDFs');
+        const err = await res.json().catch(() => null);
+        throw new Error(signErrorMessage(err, 'Não foi possível assinar os PDFs.'));
       }
 
       const blob = await res.blob();
@@ -629,6 +650,18 @@
               on:change={handleDocumentUpload}
               hidden
             />
+
+            {#if isPades && includeVisualSignature && documentsToSign.length === 1}
+              <div class="placer-slot">
+                <SignaturePlacer
+                  file={documentsToSign[0]}
+                  defaultPage={page}
+                  defaultPosition={signaturePosition}
+                  signerName={certificateInfo?.commonName ?? ''}
+                  bind:placement={manualPlacement}
+                />
+              </div>
+            {/if}
 
             <button class="btn btn-primary btn-block" on:click={signDocuments} disabled={isLoading}>
               {#if isLoading}
@@ -1040,6 +1073,12 @@
     font-size: 0.8rem;
     font-weight: 700;
     margin-top: 2px;
+  }
+  /* No celular a prévia do PDF usa a largura toda do cartão (sai do recuo do número do passo). */
+  @media (max-width: 560px) {
+    .placer-slot {
+      margin-left: calc(-26px - 0.9rem);
+    }
   }
   .step-body h3 {
     margin: 0 0 0.8rem;
