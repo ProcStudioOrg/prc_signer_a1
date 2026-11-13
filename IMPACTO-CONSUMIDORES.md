@@ -164,3 +164,83 @@ responde **503 "tente novamente"** e loga em ERROR, nunca a mensagem que manda r
 certificado. `GOV_BR` segue aceito por nome + conteúdo + integridade; campo ausente (Signer anterior a
 1.3.0) é tolerado com aviso no log. Do lado de cá, a v1.3.1 loga em ERROR todo caminho que produz
 `unverified` por falha nossa, para as duas pontas contarem a mesma história.
+
+---
+
+# Impacto — posição da assinatura visível (v1.4.0, 2026-11-12)
+
+> Mudança: `/sign/pdf`, `/sign/pdf/json` e `/sign/pdf/batch` ganham um contrato
+> de coordenadas explícito para `page`/`x`/`y`/`width`/`height`, validação com
+> 400 legível e, no lote, posição por arquivo (`placements`). A página pública
+> ganha a prévia com a caixa arrastável.
+
+## TL;DR — quem só usa atalho de canto não muda nada. Quem passar a mandar x/y segue o contrato abaixo.
+
+## O contrato, em cinco linhas
+
+1. **Unidade:** pontos PDF (1/72"), decimais aceitos.
+2. **Página:** `page` conta a partir de 1; `0` = última.
+3. **Espaço:** a página como o leitor a vê — CropBox (limitado ao MediaBox), já girada pelo `/Rotate`.
+4. **Origem:** canto inferior esquerdo da página visível, y para cima; `x`/`y` são o canto inferior
+   esquerdo da caixa, `width`/`height` o tamanho dela (padrão 240 × 102, mínimo 120 × 51).
+5. **Validação:** a caixa inteira tem de caber na página (folga 0,5 pt); senão **400** com
+   `code: INVALID_SIGNATURE_PAGE | INVALID_SIGNATURE_PLACEMENT` e o motivo em `error`.
+
+Fonte da verdade: `src/main/java/com/example/documentsigner/pades/SignaturePlacement.java`.
+Testes: `SignaturePlacementTest` (confere o `/Rect` do widget **e** os pixels da página renderizada,
+inclusive em página girada e com CropBox deslocado) e `SignPdfPlacementApiTest` (porta HTTP).
+
+## O que muda de comportamento (e para quem)
+
+| Antes | Agora | Quem sente |
+|---|---|---|
+| `x`/`y` só valiam com `position=custom`; com outro `position` eram ignorados em silêncio | `x` e `y` juntos sempre valem e têm prioridade sobre `position` | Quem mandava `x`/`y` junto com um atalho (o Rails não manda) |
+| `x`/`y` inteiros (`x=10.5` → 500) | decimais aceitos | — |
+| `width`/`height` mudavam só a borda; o texto ficava no tamanho fixo | o carimbo inteiro escala | Quem mandava tamanho diferente de 240 × 102 (o Rails não manda) |
+| `width`/`height` qualquer | mínimo 120 × 51 → 400 abaixo disso | idem |
+| Caixa fora da página era gravada assim mesmo (carimbo invisível ou cortado) | 400 `INVALID_SIGNATURE_PLACEMENT` | Qualquer consumidor com coordenada errada — passa a ver o erro |
+| `position` desconhecido caía em `bottom-right` | 400 `INVALID_SIGNATURE_PLACEMENT` | Quem mandava atalho com erro de digitação |
+| Página inexistente: 400 `INVALID_DOCUMENT` | 400 `INVALID_SIGNATURE_PAGE` (mesma mensagem) | Quem comparava o `code` (ninguém mapeado) |
+| Página com `/Rotate`: carimbo deitado, canto calculado no MediaBox cru | carimbo em pé, no canto que o leitor vê | Todos — é correção |
+| CropBox deslocado ignorado | respeitado | Todos — é correção |
+| `x=abc` → 500 | 400 `BAD_REQUEST` | — |
+
+Em página sem rotação e com CropBox = MediaBox na origem (o caso comum), os atalhos de canto e as
+coordenadas caem **exatamente** onde caíam.
+
+## Consumidores
+
+### Backend Rails — `ProcStudio-Docker/api` (`A1Signature::SignDocumentService`)
+- Hoje manda `visible`, `page` (já resolvido: `last` vira o número da última página) e `position`
+  (um dos quatro atalhos). **Nada quebra.**
+- Já repassa `x`/`y`/`width`/`height` se o chamador os fornecer. Com a 1.4.0 eles passam a valer sem
+  precisar de `position=custom`. O posicionamento manual do ProcStudio (branch
+  `brpl/assinaturas-posicionamento-20261112`) usa exatamente este contrato e **depende da 1.4.0 em
+  produção**: contra a 1.3.x, `x`/`y` enviados com um atalho são ignorados e a assinatura cai no canto.
+- Lê `error`/`message` na falha: as mensagens novas chegam em inglês no campo `error`, com `code`
+  estável para traduzir.
+
+### Frontend do assinador
+- Passa a mandar `page` + `x`/`y`/`width`/`height` quando o usuário ajusta a caixa na prévia; sem
+  ajuste continua mandando `page` + `position`.
+- Erros de posição são traduzidos pelo `code`.
+- A página aceita um PDF por vez, então não usa `placements`; o parâmetro existe para consumidores de API.
+
+## Verificar o deploy
+
+```bash
+curl -s https://signer.procstudio.com.br/api/v1/health   # "version":"1.4.0"
+```
+
+O worker do pdf.js é servido como `.mjs`; o `docker/nginx.conf` ganhou um `location` que garante
+`Content-Type: application/javascript` para essa extensão (com `nosniff`, o navegador recusa o worker
+se vier como `application/octet-stream`). Depois do deploy, abrir a página, escolher um PDF e conferir
+que a prévia aparece. Se não aparecer, a assinatura continua funcionando pelos atalhos de canto.
+
+## Limites conhecidos da prévia
+
+- PDF protegido por senha ou corrompido: a prévia não abre e a página avisa; a assinatura segue pelos
+  atalhos.
+- Imagens JPEG 2000/JBIG2 e perfis ICC dependem dos decodificadores WebAssembly do pdf.js, que **não**
+  foram habilitados (exigiriam `'wasm-unsafe-eval'` no CSP). Nesses PDFs a imagem pode não aparecer na
+  prévia; o texto e a posição da caixa continuam corretos, e o PDF assinado não é afetado.

@@ -148,6 +148,57 @@ curl -X POST http://localhost:8080/api/v1/sign/pdf \
   -o documento_assinado.pdf
 ```
 
+##### Posição da assinatura visível (contrato de coordenadas, v1.4.0)
+
+Vale para `/sign/pdf`, `/sign/pdf/json` e `/sign/pdf/batch`. A conta mora em
+`pades/SignaturePlacement.java`; o frontend usa a mesma em `frontend/src/lib/placement.js`.
+
+| Parâmetro | Padrão | Significado |
+|---|---|---|
+| `visible` | `false` | `true` desenha o carimbo; sem isso os demais são ignorados |
+| `page` | `0` | Página, **contando a partir de 1**. `0` = última página |
+| `position` | `bottom-right` | Atalho de canto: `bottom-right`, `bottom-left`, `top-right`, `top-left` (margem de 20 pt). Usado quando `x`/`y` não vêm |
+| `x`, `y` | — | Canto **inferior esquerdo** da caixa. Enviados juntos, têm prioridade sobre `position` |
+| `width`, `height` | `240`, `102` | Tamanho da caixa. Mínimo 120 × 51. O carimbo escala por um fator único (o menor entre largura/240 e altura/102), ancorado no topo esquerdo |
+
+- **Unidade:** pontos PDF (1/72 de polegada); decimais são aceitos.
+- **Espaço:** a página **como o leitor a vê** — recortada pelo CropBox (limitado ao MediaBox) e já girada
+  pelo `/Rotate`. Uma página A4 retrato com `/Rotate 90` mede 842 × 595 para este contrato, e o carimbo sai em pé.
+- **Origem:** canto inferior esquerdo da página visível; `x` cresce para a direita e `y` para cima.
+  Quem trabalha em tela (origem no topo) converte com `y = alturaDaPágina − topo − altura`.
+- **Validação:** a caixa inteira precisa caber na página (folga de 0,5 pt). Fora disso a resposta é
+  **400** com `code` e o motivo em `error`:
+
+| `code` | Quando |
+|---|---|
+| `INVALID_SIGNATURE_PAGE` | `page` maior que o número de páginas |
+| `INVALID_SIGNATURE_PLACEMENT` | caixa fora da página, menor que o mínimo, `x` sem `y`, `position=custom` sem coordenadas, atalho desconhecido, `placements` malformado |
+| `BAD_REQUEST` | valor que não é número (`x=abc`, `page=1.5`) |
+
+```bash
+# Carimbo de 240 × 102 pt com o canto inferior esquerdo a 300 pt da esquerda
+# e 120 pt de baixo, na página 2
+curl -X POST http://localhost:8080/api/v1/sign/pdf \
+  -F "document=@documento.pdf" -F "certificate=@certificado.pfx" -F "password=sua_senha" \
+  -F "visible=true" -F "page=2" -F "x=300" -F "y=120" \
+  -o documento_assinado.pdf
+```
+
+**Lote (`/sign/pdf/batch`).** `page`/`position`/`x`/`y`/`width`/`height` da requisição valem para todos
+os arquivos, cada um validado contra a própria página. Para posição **por arquivo**, envie `placements`:
+um array JSON com um item por arquivo, na ordem dos `documents`. Item `null` usa a posição da requisição;
+objeto aceita `page`, `x`, `y`, `width`, `height`, `position` (campo ausente herda o da requisição).
+`placements` malformado ou com tamanho diferente recusa o lote inteiro (400); posição que não cabe num
+arquivo falha só aquele arquivo (`<nome>.error.txt` no ZIP, `X-Failed-Count`).
+
+```bash
+curl -X POST http://localhost:8080/api/v1/sign/pdf/batch \
+  -F "documents=@a.pdf" -F "documents=@b.pdf" \
+  -F "certificate=@certificado.pfx" -F "password=sua_senha" -F "visible=true" \
+  -F 'placements=[{"page":1,"x":40,"y":60},null]' \
+  -o documentos_assinados.zip
+```
+
 #### Assinar Documento (Download .p7s)
 
 ```bash
@@ -328,6 +379,27 @@ Uma coleção Bruno para testar a API está disponível em `/collection`.
 - ✅ Deploy automatizado AWS CodeBuild/ECS
 - ✅ Assinatura visual em PDF (PAdES)
 - ✅ Healthcheck e logs centralizados
+
+### v1.4.0
+- **Posicionar a assinatura visível.** Na página pública, depois de escolher o
+  PDF aparece a prévia da página com a caixa da assinatura: arrastar para
+  posicionar, puxar o canto para mudar o tamanho, navegar entre páginas e
+  atalhos de canto. Funciona com toque (390 px) e nos dois temas. A prévia usa
+  pdf.js (`pdfjs-dist` 5.7.284, Apache-2.0), baixado só quando a prévia abre.
+- **Contrato de coordenadas** de `x`/`y`/`width`/`height` documentado e testado
+  (ver "Posição da assinatura visível"): pontos, página visível (CropBox +
+  `/Rotate`), origem embaixo à esquerda. Idêntico ao comportamento anterior em
+  página sem rotação e sem CropBox deslocado.
+- `x`/`y` passam a valer sempre que vêm juntos (antes só com
+  `position=custom`) e aceitam decimais. `width`/`height` escalam o carimbo
+  (antes só mudavam a borda).
+- Página girada (`/Rotate`) deixa de sair com o carimbo deitado e no canto
+  errado; CropBox deslocado passa a ser respeitado.
+- Posição inválida responde **400** com motivo (`INVALID_SIGNATURE_PAGE`,
+  `INVALID_SIGNATURE_PLACEMENT`): caixa fora da página, abaixo de 120 × 51 pt,
+  `x` sem `y`, atalho desconhecido (antes caía calado em `bottom-right`), número
+  inválido (antes 500).
+- `/sign/pdf/batch` aceita `x`/`y` e `placements` (posição por arquivo).
 
 ### v1.3.1
 - `unverified` nunca mais sai em silêncio. `CertificateChainVerifier` loga em

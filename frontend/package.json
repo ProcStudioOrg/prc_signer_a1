@@ -7,11 +7,14 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node --test seo.test.mjs"
+    "test": "node --test seo.test.mjs placement.test.mjs"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^6.2.1",
     "svelte": "^5.45.2",
     "vite": "^7.3.1"
+  },
+  "dependencies": {
+    "pdfjs-dist": "5.7.284"
   }
 }
